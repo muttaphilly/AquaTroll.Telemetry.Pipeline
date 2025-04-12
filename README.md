@@ -1,6 +1,6 @@
-# AquaTroll Project Data Pipeline
+# AquaTroll Logger Data Pipeline
 
-This project scrapes data from loggers, calibrates it, and emails the results. It is designed to be run automatically, using a cron job on a Raspberry Pi.
+This project scrapes data from loggers, perfomrs daily calibrations then emails results. It is designed to be run automatically, using a cron job on a Raspberry Pi.
 
 ## Setup Instructions
 
@@ -11,7 +11,9 @@ This project scrapes data from loggers, calibrates it, and emails the results. I
     ```
 
 2.  **Create Environment File:**
-    Copy the `.env` file into the project root folder. Populate it with the necessary credentials and configuration. 
+    Create `.env` file in project folder. Populate it with the necessary credentials and configuration. 
+    
+    For help with configuration or troubleshooting, contact me through [GitHub's contact feature](https://github.com/muttaphilly).
 
 3.  **Set up Python Virtual Environment:**
     The Pi requires a virtual environment to manage Python dependencies.
