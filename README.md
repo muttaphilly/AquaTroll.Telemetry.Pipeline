@@ -9,11 +9,9 @@ This project scrapes data from the Unidata Neon logger portal, validates it, and
     git clone https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline.git
 +   cd AquaTroll.Telemetry.Pipeline
     ```
-    *(Replace `<your-repository-url>` with the actual URL after uploading to GitHub)*
 
 2.  **Create Environment File:**
     Copy the `.env` file into the project root folder. Populate it with the necessary credentials and configuration. 
-    ```
 
 3.  **Set up Python Virtual Environment:**
     The Pi requires a virtual environment to manage Python dependencies.
@@ -38,7 +36,6 @@ This project scrapes data from the Unidata Neon logger portal, validates it, and
     Playwright needs browser binaries specific to your system.
     ```bash
     python -m playwright install
-    # or npx playwright install
     ```
     *Note for Raspberry Pi:* Ensure you are using a compatible Raspberry Pi OS (like the 64-bit version) and that Playwright supports the ARM architecture. Installation might take longer. Check the official Playwright documentation for ARM/Raspberry Pi support if you encounter issues.
 
