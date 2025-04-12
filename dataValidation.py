@@ -6,7 +6,6 @@ import logging
 from logging import FileHandler
 from typing import Optional, Tuple, Set, Dict, List
 import weatherStation
-import os
 import json
 
 # --- Load Sites from Environment Variable ---
@@ -14,23 +13,22 @@ SITE_CONFIG = {}
 EXPECTED_SITES = set()
 logger_instance = logging.getLogger('data_validation')
 
-try:
-    site_config_json = os.getenv('SITE_CONFIG_JSON', '')
-    if site_config_json:
-        SITE_CONFIG = json.loads(site_config_json)
-        if not isinstance(SITE_CONFIG, dict):
-            #logger_instance.warning("SITE_CONFIG_JSON did not parse into a dictionary. Using empty config.")
-            SITE_CONFIG = {}
-        EXPECTED_SITES = set(SITE_CONFIG.keys())
-except Exception as e:
-    #logger_instance.error(f"Error loading site configuration: {e}")
-    SITE_CONFIG = {}
-    EXPECTED_SITES = set()
-# ------  ------   ------   ------
-# ------  ------   ------   ------
+def load_site_config():
+    """Load site configuration from environment variables."""
+    global SITE_CONFIG, EXPECTED_SITES
+    
+    try:
+        site_config_json = os.getenv('SITE_CONFIG_JSON', '')
+        if site_config_json:
+            SITE_CONFIG = json.loads(site_config_json)
+            if not isinstance(SITE_CONFIG, dict):
+                SITE_CONFIG = {}
+            EXPECTED_SITES = set(SITE_CONFIG.keys())
+    except Exception:
+        SITE_CONFIG = {}
+        EXPECTED_SITES = set()
 
-# --- Creates dataValidation.log. To enable, set bool to True here & in consolidate_csv_files call at end script---
-# --- Terminal will also display high level info ---
+# --- Setup logger for debugging. Uncomment to True if needed ---
 def setup_logging(log_file_path: str = None, enable_file_logging: bool = False) -> logging.Logger:
     logger = logging.getLogger('data_validation')
     if logger.hasHandlers():
@@ -48,19 +46,32 @@ def setup_logging(log_file_path: str = None, enable_file_logging: bool = False) 
     
     # Only add file handler if enabled and path provided
     if enable_file_logging and log_file_path:
-        file_handler = FileHandler(
-            log_file_path,
-            mode='w'  
-        )
+        file_handler = FileHandler(log_file_path, mode='w')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     
     return logger
-# ------  ------   ------   ------
-# ------  ------   ------   ------
 
-# --- This is where the heavy lifting happens ---
-# --- Get's weather data > calibrates depth data > creates final csv files ---
+# --- Utility functions ---
+def parse_datetime(date_str: str, time_str: str) -> Optional[str]:
+    """Parse date and time strings into a standardised datetime format."""
+    try:
+        dt = pd.to_datetime(f"{date_str} {time_str}", format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        if pd.isna(dt):
+            return None
+        return dt.strftime('%d/%m/%Y:00:00:00')
+    except Exception:
+        return None
+
+def convert_to_numeric(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
+    """Convert specified columns to numeric values, handling errors."""
+    for col in columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+# --- Core data processing functions ---
+
 def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
     logger.info("Retrieving BoM barometric data")
     
@@ -69,12 +80,10 @@ def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
         baro_data = weatherStation.scrape_weather_data()
            
         if baro_data is None or baro_data.empty:
-            #logger.warning("Failed to retrieve BOM barometric data or data was empty.")
             return None
         
         # Check required variables exist
         if not {'Date', 'Time', 'hPa'}.issubset(baro_data.columns):
-            #logger.error("BOM data missing required columns.")
             return None
         
         try:
@@ -97,20 +106,15 @@ def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
             date_only = baro_data['DateTime'].str.split(':', n=1).str[0]
             baro_data = baro_data.loc[~date_only.duplicated(keep='first')]
             
-            #logger.info(f"BOM data processed: {len(baro_data)} unique date entries")
             return baro_data
             
-        except Exception as e:
-            #logger.error(f"Error converting BOM Date/Time: {e}")
+        except Exception:
             return None
             
-    except Exception as e:
-        #logger.error(f"Error processing BOM barometric data: {str(e)}", exc_info=True)
+    except Exception:
         return None
-# ------  ------   ------   ------
-# ------  ------   ------   ------
 
-# --- Flag missing/invalid data with a comment ---
+# --- Flag site missing/invalid data with a comment ---
 def create_placeholder_data(site_name: str, reason: str) -> pd.DataFrame:
     today_date = datetime.datetime.now().strftime('%d/%m/%Y')
     return pd.DataFrame({
@@ -120,10 +124,8 @@ def create_placeholder_data(site_name: str, reason: str) -> pd.DataFrame:
         'Barometric Pressure(RAW)[Main Buffer] (hPa)': [np.nan],
         'Comments': [f"{reason} on {today_date}"]
     })[['Site', 'DateTime', 'Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Comments']]
-# ------  ------   ------   ------
-# ------  ------   ------   ------
 
-# --- Process a single site --- 
+# --- Process site with data --- 
 def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[pd.DataFrame], str, bool]:
     site_name = os.path.splitext(os.path.basename(file_path))[0]
     
@@ -132,14 +134,12 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         df = pd.read_csv(file_path)       
         # Check if empty
         if df.empty:
-            #logger.warning(f"Skipping {site_name}: File is empty")
             return create_placeholder_data(site_name, "No telemetry data found in file"), site_name, False
         
         # Check if required variables exist
         expected_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
         missing_columns = [col for col in expected_columns if col not in df.columns]
         if missing_columns:
-            #logger.warning(f"Skipping {site_name}: Missing columns: {', '.join(missing_columns)}")
             return None, site_name, False
         
         initial_count = len(df)
@@ -160,14 +160,17 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         
         # Convert numeric columns
         numeric_cols = ['Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
-        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')       
+        df = convert_to_numeric(df, numeric_cols)       
+        
         # Drop any invalid values
         pre_filter_count = len(df)
         df = df.dropna(subset=numeric_cols)
         if len(df) < pre_filter_count:
             logger.warning(f"Removed {pre_filter_count - len(df)} rows from {site_name} due to non-numeric values.")       
+        
         # Filter based on minimum water level
         df = df[df['Level(RAW)[Main Buffer] (ft)'] >= 0.0001].copy()       
+        
         # Do we have any data this month? 
         if df.empty:
             logger.warning(f"No valid data remaining for {site_name} after filtering.")
@@ -179,10 +182,7 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
 
         if conversion_type == 'divide_by_100':
             df['Depth(m)raw'] = (df['Level(RAW)[Main Buffer] (ft)'] / 100).round(2)
-        elif conversion_type == 'default':
-            df['Depth(m)raw'] = df['Level(RAW)[Main Buffer] (ft)'].round(2)
-        else: # Fallback/Unknown type
-            #logger.warning(f"Unknown depth conversion type '{conversion_type}' for site {site_name}. Using default.")
+        else:  # Default or unknown type
             df['Depth(m)raw'] = df['Level(RAW)[Main Buffer] (ft)'].round(2)
         
         # Add comments variable
@@ -196,13 +196,9 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         logger.warning(f"Skipping {site_name}: File is empty")
         return create_placeholder_data(site_name, "Empty file"), site_name, False
     except pd.errors.ParserError:
-        #logger.error(f"Error parsing {site_name}: Invalid CSV format")
         return None, site_name, False
-    except Exception as e:
-        #logger.error(f"Unexpected error processing {site_name}: {str(e)}", exc_info=True)
+    except Exception:
         return None, site_name, False
-# ------  ------   ------   ------
-# ------  ------   ------   ------
 
 def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: logging.Logger, reference_density: float = 1000.0) -> pd.DataFrame:
     """
@@ -238,15 +234,12 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
     Returns:
         DataFrame with an added 'Depth(m)adjusted' column.
     """
-    #logger.info("Calculating adjusted depth using AquaTroll formula...")
-
     # Constants for calculation
     HPA_TO_PSI = 0.0145038  # Conversion factor from hectopascals (hPa) to PSI
     CONVERSION_FACTOR = 0.70307  # AquaTroll's conversion factor from PSI to meters per specific gravity
     
     # Calculate specific gravity from water density
     SG = water_density / reference_density
-    #logger.info(f"Using water density: {water_density} kg/m³, Specific Gravity: {SG:.4f}")
 
     # --- Input Data Verification and Preparation ---
     required_cols = ['Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'BomBaro']
@@ -256,13 +249,7 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
         raise ValueError(f"Missing required columns: {missing_cols}")
 
     numeric_cols = ['Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'BomBaro']
-    for col in numeric_cols:
-        if col in df.columns:
-            original_type = df[col].dtype
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-            conversion_nulls = df[col].isna().sum()
-            #if conversion_nulls > 0:
-                #logger.warning(f"Column {col}: {conversion_nulls} values could not be converted to numeric")
+    df = convert_to_numeric(df, numeric_cols)
 
     # Initialise new variable
     df['Depth(m)adjusted'] = np.nan
@@ -275,17 +262,11 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
         df['Depth(m)raw'].notna()
     )
 
-    #logger.info(f"Attempting depth adjustment calculation on {mask.sum()} observations with available data.")
-
     if mask.sum() > 0:
         # Calculate the difference between the logger's internal barometric reading and the external reading (in hPa)
         # Positive delta_p means logger measured higher pressure than weather station
         delta_p_hpa = df.loc[mask, 'Barometric Pressure(RAW)[Main Buffer] (hPa)'] - df.loc[mask, 'BomBaro']
         
-        #Uncomment to see statistics about the barometric pressure difference
-        #logger.info(f"Barometric difference statistics (hPa) - Mean: {delta_p_hpa.mean():.2f}, "
-                    #f"Min: {delta_p_hpa.min():.2f}, Max: {delta_p_hpa.max():.2f}")
-
         # Convert the pressure difference from hPa to PSI (as required by AquaTroll formula)
         delta_p_psi = delta_p_hpa * HPA_TO_PSI
         # Calculate depth adjustment using AquaTroll's formula: D = 0.70307 * P / SG
@@ -299,29 +280,33 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
         # Round the final adjusted depth
         df['Depth(m)adjusted'] = df['Depth(m)adjusted'].round(2)
         
-        # Uncomment to see log statistics about the adjustments made
-        #logger.info(f"Depth adjustment statistics (m) - Mean: {depth_adjustment_m.mean():.3f}, "
-                    #f"Min: {depth_adjustment_m.min():.3f}, Max: {depth_adjustment_m.max():.3f}")
-        
         adjusted_count = df.loc[mask, 'Depth(m)adjusted'].notna().sum()
         logger.info(f"{adjusted_count} rows successfully adjusted based on barometer differences.")
     else:
         logger.warning("No rows found with complete data for depth adjustment calculation.")
 
     return df
-# ------  ------   ------   ------
-# ------  ------   ------   ------
 
-# After depth readings have been adjusted, create the final csv files
+# --- Primary function: Main orchestrator of the data validation process ---
 def consolidate_csv_files(
     input_folder: str, 
     output_file: str, 
     log_file: Optional[str] = None, 
-    enable_file_logging: bool = False,  # Add this parameter
+    enable_file_logging: bool = False,
     water_density: float = 1000, 
     gravity: float = 9.80665
 ) -> None:
-
+    """
+    This function coordinates the entire data validation process.
+    It handles:
+    1. Processing site files
+    2. Retrieving and merging barometric data
+    3. Calculating adjusted depths based on barometric differences
+    4. Creating the final csv files
+    """
+    # Load site configuration
+    load_site_config()
+    
     # Set up logging (if set to True)
     if log_file is None and enable_file_logging:
         log_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
@@ -332,7 +317,6 @@ def consolidate_csv_files(
     
     # Check input folder exists
     if not os.path.exists(input_folder):
-        #logger.error(f"Input folder does not exist: {input_folder}")
         return
     
     # Create output directory if needed
@@ -340,9 +324,7 @@ def consolidate_csv_files(
     if output_dir and not os.path.exists(output_dir):
         try:
             os.makedirs(output_dir)
-            #logger.info(f"Created output directory: {output_dir}")
-        except Exception as e:
-            #logger.error(f"Failed to create output directory: {e}")
+        except Exception:
             return
     
     # Find all CSV files
@@ -353,8 +335,7 @@ def consolidate_csv_files(
         logger.error(f"Input folder not found or inaccessible: {input_folder}")
         return
     
-    # Define expected sites using SITE_CONFIG and initialize tracking sets
-    expected_sites = EXPECTED_SITES 
+    # Initialize tracking sets
     processed_sites = set()
     sites_with_data = set()
     sites_without_data = set()
@@ -375,7 +356,7 @@ def consolidate_csv_files(
                 sites_without_data.add(site_name)
     
     # Handle missing expected sites
-    missing_sites = expected_sites - processed_sites
+    missing_sites = EXPECTED_SITES - processed_sites
     for site in missing_sites:
         placeholder_df = create_placeholder_data(site, "No telemetry data found")
         consolidated_data.append(placeholder_df)
@@ -391,8 +372,6 @@ def consolidate_csv_files(
             final_df = final_df.sort_values(['Site', 'DateTime'])
             date_only = final_df['DateTime'].str.split(':', n=1).str[0]
             final_df = final_df.loc[~(final_df['Site'] + date_only).duplicated(keep='first')]
-            
-            #logger.info(f"After removing duplicate daily entries: {len(final_df)} total rows remaining")
             
             # Get BoM barometric data
             bom_baro_data = get_bom_baro_data(logger)
@@ -423,7 +402,7 @@ def consolidate_csv_files(
                 bom_data_count = final_df['BomBaro'].notna().sum()
                 logger.info(f"Successfully merged barometric data. {bom_data_count} rows have barometric pressure values.")
             else:
-                logger.warning("Barometric data unsuccesful (retrieval failed or data was empty/invalid).")
+                logger.warning("Barometric data unsuccessful (retrieval failed or data was empty/invalid).")
             
             # Calculate adjusted depth
             final_df = calculate_adjusted_depth(final_df, water_density, logger)
@@ -449,13 +428,12 @@ def consolidate_csv_files(
 
             # --- Create csv for environmental database (only calibrated observations) ---
             try:
-                # Ensure output_dir is defined correctly (it's derived from output_file earlier)
+                # Ensure output_dir is defined correctly
                 greater_pbo_output_file = os.path.join(output_dir, 'greaterPBOPools.csv')
 
                 # Select required variables & filter for successfully adjusted observations
-                # Keep only observations where 'Depth(m)adjusted' is not NaN
                 pbo_df = final_df.loc[final_df['Depth(m)adjusted'].notna(),
-                                      ['Site', 'DateTime', 'Depth(m)adjusted', 'Comments']].copy()
+                                     ['Site', 'DateTime', 'Depth(m)adjusted', 'Comments']].copy()
 
                 if not pbo_df.empty:
                     # Rename the depth variable
@@ -465,7 +443,7 @@ def consolidate_csv_files(
                     pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
                     logger.info(f"Envirosys upload file saved to:\n {greater_pbo_output_file} \n")
                 else:
-                     logger.info(f"No data with adjusted depth found. {greater_pbo_output_file} Not created.")
+                    logger.info(f"No data with adjusted depth found. {greater_pbo_output_file} Not created.")
 
             except KeyError as e:
                 logger.error(f"Error creating greaterPBOPools.csv: Missing column {e}")
@@ -489,20 +467,4 @@ def consolidate_csv_files(
         except Exception as e:
             logger.error(f"Error during final consolidation, calculation, or saving: {str(e)}", exc_info=True)
     else:
-        logger.error("No valid dataframes were generated from input files. Output file not created.")
-
-# Checks if the script is being run directly (rather than imported by runPipeline)
-if __name__ == "__main__":
-    input_folder = r'/Users/mudaphilly/code/Projects/AquaTroll Project/data_downloads'
-    output_folder = r'/Users/mudaphilly/code/Projects/AquaTroll Project/transformed_data'
-    
-    # Create output folder if it doesn't exist
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        print(f"Created output directory: {output_folder}")
-
-    output_file = os.path.join(output_folder, 'validatedDepthData.csv')
-    log_file = os.path.join(output_folder, 'dataValidation.log')
-
-    # File logging disabled by default (set to True to enable)
-    consolidate_csv_files(input_folder, output_file, log_file, enable_file_logging=False)
+        logger.error("No valid dataframes. Output file not created.")

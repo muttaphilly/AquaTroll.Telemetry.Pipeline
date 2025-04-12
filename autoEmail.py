@@ -105,7 +105,7 @@ def send_pbo_pools_email(attachment_path, log_file_path_not_used):
     recipient = os.getenv('RECIPIENT_PBO_POOLS')
     recipients = [r for r in [recipient] if r]
     if not recipients:
-        log.warning("Receiver not defined for database upload. Skipping email.")
+        log.warning("Environmental database email not found. Skipping email.")
         return False
     
     subject_template = os.getenv('PBO_POOLS_EMAIL_SUBJECT', "{month} PBO Pools Depth Data")
