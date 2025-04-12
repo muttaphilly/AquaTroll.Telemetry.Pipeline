@@ -1,13 +1,13 @@
 # AquaTroll Project Data Pipeline
 
-This project scrapes data from the Unidata Neon logger portal, validates it, and emails reports. It is designed to be run automatically, using a cron job on a Raspberry Pi.
+This project scrapes data from loggers, calibrates it, and emails the results. It is designed to be run automatically, using a cron job on a Raspberry Pi.
 
 ## Setup Instructions
 
 1.  **Clone Repository:**
     ```bash
     git clone https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline.git
-+   cd AquaTroll.Telemetry.Pipeline
+    cd AquaTroll.Telemetry.Pipeline
     ```
 
 2.  **Create Environment File:**
