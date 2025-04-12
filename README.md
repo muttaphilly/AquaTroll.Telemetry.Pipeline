@@ -6,8 +6,8 @@ This project scrapes data from the Unidata Neon logger portal, validates it, and
 
 1.  **Clone Repository:**
     ```bash
-    git clone <your-repository-url>
-    cd AquaTroll-Project
+    git clone https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline.git
++   cd AquaTroll.Telemetry.Pipeline
     ```
     *(Replace `<your-repository-url>` with the actual URL after uploading to GitHub)*
 
