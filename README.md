@@ -7,14 +7,14 @@ This project scrapes data from loggers, perfomrs daily calibrations then emails 
 The project automates the process of fetching AquaTroll logger data, calibrating it using external weather data, and emailing the results. The main script, `runPipeline.py`, orchestrates the following steps:
 
 1.  **Scraping Logger Data (`loggerScraper.py`):** Uses Playwright to automate a web browser, log into the logger website for each configured site, navigate to the data export section, download raw level and barometric pressure CSV files into the `data_downloads/` directory, and merges these two files per site.
-2.  **Scraping Weather Data (`weatherStation.py`):** Uses Requests and BeautifulSoup to scrape the Bureau of Meteorology (BoM) website for daily barometric pressure readings.
+2.  **Scraping Weather Data (`weatherStation.py`):** Uses Requests and BeautifulSoup to scrape weather website for daily barometric pressure readings.
 3.  **Data Validation & Calibration (`dataValidation.py`):**
     *   Reads the merged raw data CSVs from `data_downloads/`.
     *   Cleans and validates the data (handles missing values, converts types).
-    *   Retrieves the BoM barometric data (by calling `weatherStation.py`).
-    *   Merges the BoM data with the logger data based on date.
+    *   Retrieves external barometric data (by calling `weatherStation.py`).
+    *   Merges external weather data with the logger data based on date.
     *   Calculates an 'adjusted depth' by comparing the logger's internal barometer reading with the external BoM reading, applying a formula specific to the AquaTroll sensors.
-    *   Consolidates the processed data from all sites into final output CSV files (`validatedDepthData.csv` and `greaterPBOPools.csv`) saved in `transformed_data/`.
+    *   Consolidates processed data into final output CSV files (`validatedDepthData.csv` and `greaterPBOPools.csv`) saved in `transformed_data/`.
 4.  **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients using credentials from the `.env` file.
 
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
