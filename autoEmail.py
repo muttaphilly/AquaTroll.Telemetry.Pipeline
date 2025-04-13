@@ -86,7 +86,7 @@ def send_email_with_attachment(recipient_emails, subject, body, attachment_path)
             server.quit()
 
 # ------- Email to environment team (for EMS)
-def send_validated_data_email(attachment_path, log_file_path_not_used):
+def send_validated_data_email(attachment_path):
     recipient1 = os.getenv('RECIPIENT_DEPTH_DATA_1')
     recipient2 = os.getenv('RECIPIENT_DEPTH_DATA_2')
     recipients = [r for r in [recipient1, recipient2] if r]
@@ -101,7 +101,7 @@ def send_validated_data_email(attachment_path, log_file_path_not_used):
     return send_email_with_attachment(recipients, subject, body, attachment_path)
 
 # ------- Auto-upload to environmental database
-def send_pbo_pools_email(attachment_path, log_file_path_not_used):
+def send_pbo_pools_email(attachment_path):
     recipient = os.getenv('RECIPIENT_PBO_POOLS')
     recipients = [r for r in [recipient] if r]
     if not recipients:

@@ -19,9 +19,10 @@ def scrape_weather_data() -> Optional[pd.DataFrame]:
     # Fetch URL
     url = os.getenv("BOM_URL")
     if not url:
-        logger.error("BOM_URL not found in environment variables.")
+        logger.error("URL not found in environment variables.")
         return None
     
+    # Scrapes data by parsing the HTML of page with BeautifulSoup
     # Start the scrape. Before fetching, we need to set headers for request
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'

@@ -28,6 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Main Scraping Logic ---
+# Uses PlayWright to scrape the frontend
 def run(playwright: Playwright, download_path: str) -> None:
     """
     Main function to orchestrate the scraping process for all configured sites.

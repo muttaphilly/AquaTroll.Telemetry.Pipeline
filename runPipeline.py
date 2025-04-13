@@ -5,7 +5,7 @@ import loggerScraper
 import dataValidation
 import autoEmail
 
-# ------------ The captain. Run this for fresh hit of data ------------
+# ------------ The captain. Scrape -> Validate -> Email. ------------
 
 if __name__ == "__main__":
     load_dotenv()  # Load variables from .env file
@@ -32,7 +32,7 @@ if __name__ == "__main__":
         (output_file, autoEmail.send_validated_data_email, "Monthly pools data sent to", "Failed to send verification data to enviro team"),
         (pbo_pools_file, autoEmail.send_pbo_pools_email, "Validated and verified data sent to environmental database", "Failed to send enviro database email")
     ]:
-        if os.path.exists(file_path) and (recipients := email_function(file_path, log_file)):
+        if os.path.exists(file_path) and (recipients := email_function(file_path)):
             print(f"\n{success_msg}: {', '.join(recipients)}")
         else:
             print(f"{fail_msg}")
