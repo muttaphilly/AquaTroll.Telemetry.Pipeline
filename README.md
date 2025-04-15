@@ -1,19 +1,33 @@
 # AquaTroll Logger Data Pipeline
 
-This project scrapes data from loggers, perfomrs daily calibrations then emails results. It is designed to be run automatically, using a cron job on a Raspberry Pi.
+AquaTroll loggers are widely used for telemetry in hydrology. However, the existing hardware options isn't suitable for use in remote or hard-to-access surface water pools. With support from [Maxy Engineering](https://maxyengineering.com.au/), highly portable, power-independent hardware was developed—capable of transmitting data over 4G/5G or the Iridium satellite network.
+
+This project automates the collection of that data. It performs daily pressure calibrations using external weather data and emails these results to the site environmental team and the company’s environmental data system. Designed for automated operation, the pipeline runs as a cron job on a Raspberry Pi.
+
+## Hardware Components
+
+| Telstra Logger | Iridium Logger | Raspberry Pi Setup |
+|----------------|----------------|---------------------|
+<!-- 
+| ![Telstra Logger](images/telstra_logger.jpg) | ![Iridium Logger](images/iridium_logger.jpg) | ![Raspberry Pi](images/raspberry_pi.jpg) |
+-->
 
 ## How it Works
 
-The project automates the process of fetching AquaTroll logger data, calibrating it using external weather data, and emailing the results. The main script, `runPipeline.py`, orchestrates the following steps:
+The main script, `runPipeline.py`, orchestrates the following steps:
+- Fetches AquaTroll logger data
+- Calibrates pressure readings using external weather data
+- Emails results to relevant stakeholders
 
-1.  **Scraping Logger Data (`loggerScraper.py`):** Uses Playwright to automate a web browser, log into the logger website for each configured site, navigate to the data export section, download raw level and barometric pressure CSV files into the `data_downloads/` directory, and merges these two files per site.
-2.  **Scraping Weather Data (`weatherStation.py`):** Uses Requests and BeautifulSoup to scrape weather website for daily barometric pressure readings.
+
+1.  **Scraping Logger Data (`loggerScraper.py`):** Uses Playwright to automate a web browser and download raw level and barometric pressure CSV files into the `data_downloads/` directory. Merges these two files for each location.
+2.  **Scraping Weather Data (`weatherStation.py`):** Uses a GET Request and BeautifulSoup to scrape weather website for daily barometric pressure readings.
 3.  **Data Validation & Calibration (`dataValidation.py`):**
-    *   Reads the merged raw data CSVs from `data_downloads/`.
-    *   Cleans and validates the data (handles missing values, converts types).
+    *   Reads CSVs from `data_downloads/`.
+    *   Cleans and validates the data (Coverts types. Also handles erroneous and missing values).
     *   Retrieves external barometric data (by calling `weatherStation.py`).
     *   Merges external weather data with the logger data based on date.
-    *   Calculates an 'adjusted depth' by comparing the logger's internal barometer reading with the external BoM reading, applying a formula specific to the AquaTroll sensors.
+    *   Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the  external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
     *   Consolidates processed data into final output CSV files (`validatedDepthData.csv` and `greaterPBOPools.csv`) saved in `transformed_data/`.
 4.  **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients using credentials from the `.env` file.
 
@@ -30,7 +44,7 @@ Configuration for site details, email settings, and target URLs is managed throu
 2.  **Create Environment File:**
     Create `.env` file in project folder. Populate it with the necessary credentials and configuration.
 
-    For help with configuration or troubleshooting, contact me through [GitHub's contact feature](https://github.com/muttaphilly).
+    For help with configuration or troubleshooting, you can contact me through [GitHub's contact feature](https://github.com/muttaphilly).
 
 3.  **Set up Python Virtual Environment:**
     The Pi requires a virtual environment to manage Python dependencies.
@@ -57,7 +71,7 @@ Configuration for site details, email settings, and target URLs is managed throu
     python -m playwright install
 
     ```
-    *Note for Raspberry Pi:* Ensure you are using a compatible Raspberry Pi OS (like the 64-bit version) and that Playwright supports the ARM architecture. Installation might take longer. Check the official Playwright documentation for ARM/Raspberry Pi support if you encounter issues.
+    *Note for Raspberry Pi:* This was built and tested on a Raspberry Pi 5 running 64-bit OS. For deployment, it's headless on a Raspberry Pi Zero W using Pi OS Lite to keep power usage and costs low. If issues come up, check compatibility for your specific Pi model and install any missing system dependencies manually.
 
 ## Running the Pipeline (ad-hoc)
 
@@ -91,6 +105,8 @@ To run automatically, set up a cron job in the terminal.
 * Output and errors are logged to cron.log in the project root.
 
 3.  Save and close the editor. Cron will automatically pick up the schedule.
+
 ```💡 Tip:
 To test if your cron job is working, you can run the command manually in your terminal.
 Use tail -f cron.log to live-monitor output.
+```

@@ -73,7 +73,7 @@ def convert_to_numeric(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
 # --- Core data processing functions ---
 
 def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
-    logger.info("Retrieving BoM barometric data")
+    logger.info("Retrieving weather station barometric data")
     
     try:
         # Call weatherStation script.
@@ -88,24 +88,25 @@ def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
         
         try:
             # Convert Date/Time to DateTime format
-            baro_data['DateTime'] = pd.to_datetime(
-                baro_data['Date'] + ' ' + baro_data['Time'], 
-                format='%d/%m/%Y %H:%M:%S', 
+            baro_data['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(
+                baro_data['Date'] + ' ' + baro_data['Time'],
+                format='%d/%m/%Y %H:%M:%S',
                 errors='coerce'
             )
             
             # Clean and prepare data
+            # Keep as datetime objects for now
             baro_data = (baro_data
-                .dropna(subset=['DateTime'])
-                .assign(DateTime=lambda df: df['DateTime'].dt.strftime('%d/%m/%Y:00:00:00'))
-                [['DateTime', 'hPa']]
+                .dropna(subset=['Date Time (dd/mm/yyyy hh24:mi:ss)'])
+                [['Date Time (dd/mm/yyyy hh24:mi:ss)', 'hPa']]
                 .rename(columns={'hPa': 'BomBaro'})
             )
-            
+
             # Keep first entry for each date to remove duplicates
-            date_only = baro_data['DateTime'].str.split(':', n=1).str[0]
-            baro_data = baro_data.loc[~date_only.duplicated(keep='first')]
-            
+            # Note: This assumes BOM data is daily. If hourly, this logic might need review.
+            date_only = baro_data['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.date
+            baro_data = baro_data.loc[~date_only.astype(str).duplicated(keep='first')]
+
             return baro_data
             
         except Exception:
@@ -114,18 +115,19 @@ def get_bom_baro_data(logger: logging.Logger) -> Optional[pd.DataFrame]:
     except Exception:
         return None
 
-# --- Flag site missing/invalid data with a comment ---
+# --- Flag site missing data with a comment ---
 def create_placeholder_data(site_name: str, reason: str) -> pd.DataFrame:
-    today_date = datetime.datetime.now().strftime('%d/%m/%Y')
+    # Use midnight AM/PM format for placeholder consistency
+    today_datetime_str = datetime.datetime.now().strftime('%d/%m/%Y 00:00:00 AM')
     return pd.DataFrame({
-        'Site': [site_name],
-        'DateTime': [f"{today_date}:00:00:00"],
+        'Sample Point': [site_name],
+        'Date Time (dd/mm/yyyy hh24:mi:ss)': [today_datetime_str], # Store as string directly
         'Depth(m)raw': [0.00],
         'Barometric Pressure(RAW)[Main Buffer] (hPa)': [np.nan],
-        'Comments': [f"{reason} on {today_date}"]
-    })[['Site', 'DateTime', 'Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Comments']]
+        'Other - Comments - Text': [f"{reason} on {datetime.datetime.now().strftime('%d/%m/%Y')}"]
+    })[['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Other - Comments - Text']]
 
-# --- Process site with data --- 
+# --- Process site with data ---
 def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[pd.DataFrame], str, bool]:
     site_name = os.path.splitext(os.path.basename(file_path))[0]
     
@@ -141,23 +143,24 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         missing_columns = [col for col in expected_columns if col not in df.columns]
         if missing_columns:
             return None, site_name, False
-        
+
         initial_count = len(df)
-        df['Site'] = site_name
-        
+        df['Sample Point'] = site_name
+
         # Whips date into envirosy shape
         try:
-            df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-            df['DateTime'] = df['DateTime'].dt.strftime('%d/%m/%Y:00:00:00')
-            df = df.dropna(subset=['DateTime'])
-            
+            # Convert to datetime objects, keep original time
+            df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+            # Do not format to string here, keep as datetime object
+            df = df.dropna(subset=['Date Time (dd/mm/yyyy hh24:mi:ss)'])
+
             if len(df) < initial_count:
-                logger.warning(f"Removed {initial_count - len(df)} rows from {site_name} due to invalid Date/Time format.")
+                logger.warning(f"Removed {initial_count - len(df)} rows from {site_name} due to invalid Date/Time objects.")
                 initial_count = len(df)
         except Exception as e:
-            logger.error(f"Error processing DateTime for {site_name}: {e}")
+            logger.error(f"Error processing Date Time (dd/mm/yyyy hh24:mi:ss) for {site_name}: {e}")
             return None, site_name, False
-        
+
         # Convert numeric columns
         numeric_cols = ['Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
         df = convert_to_numeric(df, numeric_cols)       
@@ -168,7 +171,7 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         if len(df) < pre_filter_count:
             logger.warning(f"Removed {pre_filter_count - len(df)} rows from {site_name} due to non-numeric values.")       
         
-        # Filter based on minimum water level
+        # Filter out any cooked water level data (<0)
         df = df[df['Level(RAW)[Main Buffer] (ft)'] >= 0.0001].copy()       
         
         # Do we have any data this month? 
@@ -184,12 +187,12 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
             df['Depth(m)raw'] = (df['Level(RAW)[Main Buffer] (ft)'] / 100).round(2)
         else:  # Default or unknown type
             df['Depth(m)raw'] = df['Level(RAW)[Main Buffer] (ft)'].round(2)
-        
+
         # Add comments variable
-        df['Comments'] = ""
-        df = df.sort_values('DateTime')
-        df = df[['Site', 'DateTime', 'Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Comments']]
-        
+        df['Other - Comments - Text'] = ""
+        df = df.sort_values('Date Time (dd/mm/yyyy hh24:mi:ss)')
+        df = df[['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)raw', 'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Other - Comments - Text']]
+
         return df, site_name, True
         
     except pd.errors.EmptyDataError:
@@ -307,7 +310,7 @@ def consolidate_csv_files(
     # Load site configuration
     load_site_config()
     
-    # Set up logging (if set to True)
+    # Set up logging (active if True)
     if log_file is None and enable_file_logging:
         log_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
         log_file = os.path.join(log_dir, 'data_validation.log')
@@ -365,30 +368,32 @@ def consolidate_csv_files(
     # Combine all data and finalise output
     if consolidated_data:
         try:
-            # Concatenate dfs 
+            # Concatenate dfs
             final_df = pd.concat(consolidated_data, ignore_index=True)
-            
-            # Sort and deduplicate
-            final_df = final_df.sort_values(['Site', 'DateTime'])
-            date_only = final_df['DateTime'].str.split(':', n=1).str[0]
-            final_df = final_df.loc[~(final_df['Site'] + date_only).duplicated(keep='first')]
-            
-            # Get BoM barometric data
+
+            # Convert placeholder strings back to datetime if they exist, before sorting
+            final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'], errors='coerce')
+
+            # Sort and deduplicate (keep first record per site per day)
+            final_df = final_df.sort_values(['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)'])
+            # Use .dt.date to get only the date part for deduplication
+            final_df = final_df.loc[~(final_df['Sample Point'].astype(str) + final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.date.astype(str)).duplicated(keep='first')]
+
+            # Get weather staions barometric data
             bom_baro_data = get_bom_baro_data(logger)
             
             # Add BomBaro column
             final_df['BomBaro'] = np.nan
             
-            # Merge weather data if available
+            # Merge only if available
             if bom_baro_data is not None and not bom_baro_data.empty:
                 # Convert to numeric
                 bom_baro_data['BomBaro'] = pd.to_numeric(bom_baro_data['BomBaro'], errors='coerce')
-                
-                # Merge data
+            
                 final_df = pd.merge(
-                    final_df, 
-                    bom_baro_data, 
-                    on='DateTime', 
+                    final_df,
+                    bom_baro_data,
+                    on='Date Time (dd/mm/yyyy hh24:mi:ss)',
                     how='left',
                     suffixes=('', '_bom')
                 )
@@ -409,36 +414,41 @@ def consolidate_csv_files(
             
             # Arrange columns in final order
             column_order = [
-                'Site', 
-                'DateTime', 
+                'Sample Point',
+                'Date Time (dd/mm/yyyy hh24:mi:ss)',
                 'BomBaro',
-                'Barometric Pressure(RAW)[Main Buffer] (hPa)', 
+                'Barometric Pressure(RAW)[Main Buffer] (hPa)',
                 'Depth(m)raw',
                 'Depth(m)adjusted',
-                'Comments'
+                'Other - Comments - Text'
             ]
             final_df = final_df[column_order]
-            
+
             # Log site statistics
-            site_counts = final_df['Site'].value_counts().to_dict()
+            site_counts = final_df['Sample Point'].value_counts().to_dict()
             for site, count in sorted(site_counts.items()):
-                logger.info(f"Site {site}: {count} row(s) in final output")           
+                logger.info(f"Sample Point {site}: {count} row(s) in final output")
+
+            # Format DateTime to desired string format JUST before saving
+            final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
             # Save output file
             final_df.to_csv(output_file, index=False, na_rep='')
 
-            # --- Create csv for environmental database (only calibrated observations) ---
+            # --- Create csv for environmental database (calibrated observations) ---
             try:
                 # Ensure output_dir is defined correctly
                 greater_pbo_output_file = os.path.join(output_dir, 'greaterPBOPools.csv')
 
                 # Select required variables & filter for successfully adjusted observations
                 pbo_df = final_df.loc[final_df['Depth(m)adjusted'].notna(),
-                                     ['Site', 'DateTime', 'Depth(m)adjusted', 'Comments']].copy()
+                                     ['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)adjusted', 'Other - Comments - Text']].copy()
 
                 if not pbo_df.empty:
                     # Rename the depth variable
-                    pbo_df.rename(columns={'Depth(m)adjusted': 'Depth'}, inplace=True)
+                    pbo_df.rename(columns={'Depth(m)adjusted': 'LEVEL - DEPTH TO WATER - m (INPUT)'}, inplace=True)
 
+                    # Format DateTime to desired string format JUST before saving
+                    pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
                     # Save the new CSV
                     pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
                     logger.info(f"Envirosys upload file saved to:\n {greater_pbo_output_file} \n")

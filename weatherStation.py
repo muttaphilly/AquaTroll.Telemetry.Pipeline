@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 def scrape_weather_data() -> Optional[pd.DataFrame]:
     """
-    Scrapes barometric pressure readings from weather forecasting website.
+    Retrieves barometric pressure readings from weather forecasting website.
     Returns DataFrame with date, time and hPa values or None if scraping fails.
     """
     # Grab environment variables
@@ -22,8 +22,8 @@ def scrape_weather_data() -> Optional[pd.DataFrame]:
         logger.error("URL not found in environment variables.")
         return None
     
-    # Scrapes data by parsing the HTML of page with BeautifulSoup
-    # Start the scrape. Before fetching, we need to set headers for request
+    # Retrieve data by parsing the HTML of page with BeautifulSoup
+    # Before fetching, we need to set headers for request
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
@@ -110,8 +110,8 @@ def scrape_weather_data() -> Optional[pd.DataFrame]:
             return None
             
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request error while retrieving BOM data: {str(e)}")
+        logger.error(f"Request error while retrieving weather data: {str(e)}")
         return None
     except Exception as e:
-        logger.error(f"Unexpected error while scraping BOM data: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error while scraping weather data: {str(e)}", exc_info=True)
         return None
