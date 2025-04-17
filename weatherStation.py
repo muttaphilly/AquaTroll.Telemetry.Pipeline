@@ -17,7 +17,7 @@ def scrape_weather_data() -> Optional[pd.DataFrame]:
     # Set up log for debugging
     logger = logging.getLogger()
     # Fetch URL
-    url = os.getenv("BOM_URL")
+    url = os.getenv("WEATHER_URL")
     if not url:
         logger.error("URL not found in environment variables.")
         return None
