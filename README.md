@@ -10,7 +10,7 @@ This project links Maxy’s hardware with a software system that automates data 
 
 ## Hardware Components
 
-| Telstra Logger | Raspberry Pi Setup |
+| Remote Logger | Raspberry Pi Setup |
 |----------------|--------------------|
 | ![Remote Logger](images/logger.jpg) | ![Raspberry Pi](images/raspberry_pi.jpg) |
 
