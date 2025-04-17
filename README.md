@@ -7,11 +7,11 @@ The industry standard for collecting surface pool depth readings largely relies 
 
 Off-the-shelf telemetry systems were either too bulky, too power-hungry, or lacked the connectivity required to operate in steep gorges of the project environment. To overcome this, [Maxy Engineering](https://maxyengineering.com.au/) developed a highly portable, power-independent logging system capable of transmitting data via 4G/5G or the Iridium satellite network—eliminating the need for regular site visits.
 
-This project links Maxy’s hardware with a software system that automates data collection, pressure calibration, and alerting. Daily calibrations are performed using external weather data, and the system flags anomalies for review—enabling timely corrective actions. Results are emailed to the site environmental team and loaded into the company’s environmental data storage system. The full pipeline runs autonomously on a Raspberry Pi, providing reliable, continuous monitoring with no manual data handling.
+This project links Maxy’s hardware with a software system that automates key processes: fetching raw data, performing daily pressure calibrations using external weather data, and distributing validated results. The calibrated data enables timely review of anomalies and corrective actions. Results are emailed to the site environmental team and formatted for upload into the company’s environmental data storage system. The full pipeline runs autonomously on a Raspberry Pi, providing reliable, continuous monitoring with no manual data handling.
 
 ## Hardware Components
 
-| Remote Logger | Raspberry Pi Setup |
+| Remote Logger | Headless Raspberry Pi Setup |
 |----------------|--------------------|
 | ![Remote Logger](images/logger.jpg) | ![Raspberry Pi](images/raspberry_pi.jpg) |
 
@@ -94,7 +94,7 @@ To setup a scheduled run:
     ```cron
     0 17 28 * * /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/venv/bin/python /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
     ```
-* Make sure to replace project paths to your saved location.
+* Make sure to replace project paths with your saved location.
 
 * This uses the Python interpreter inside your virtual environment.
 
