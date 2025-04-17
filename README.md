@@ -1,5 +1,5 @@
 # AquaTroll Logger Data Pipeline
-
+!(images/gorgeMonitoring.jpg)
 ## Project Overview
 
 The industry standard for collecting surface pool depth readings largely relies on pressure-based logger data, which requires regular calibration to remain accurate. In areas with challenging terrain and anthropological sensitivities, infrequent site access leads to unreliable data and delayed identification of issues. This situation makes it impossible to reliably deliver the best possible environmental outcomes.
@@ -45,8 +45,6 @@ Configuration for site details, email settings, and target URLs is managed throu
 
 2.  **Create Environment File:**
     Create `.env` file in project folder. Populate it with the necessary credentials and configuration.
-
-    For help with configuration or troubleshooting, you can contact me through [GitHub's contact feature](https://github.com/muttaphilly).
 
 3.  **Set up Python Virtual Environment:**
     The Pi requires a virtual environment to manage Python dependencies.
@@ -95,15 +93,10 @@ To setup a scheduled run:
     ```cron
     0 17 28 * * /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/venv/bin/python /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
     ```
-* Make sure to replace the paths if your project is in a different location.
+* Make sure to replace project paths to your saved location.
 
 * This uses the Python interpreter inside your virtual environment.
 
 * Output and errors are logged to cron.log in the project root.
 
 3.  Save and close the editor. Cron will automatically pick up the schedule.
-
-```💡 Tip:
-To test if your cron job is working, you can run the command manually in your terminal.
-Use tail -f cron.log to live-monitor output.
-```
