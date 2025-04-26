@@ -11,12 +11,24 @@ This project links Maxy’s hardware with a software system that automates key p
 
 ## Hardware Components
 
-| Remote Logger | Headless Raspberry Pi Setup |
-|----------------|--------------------|
-| ![Remote Logger](images/logger.jpg) | ![Raspberry Pi](images/raspberry_pi.jpg) |
+#code
+## Hardware Components
 
-> 📩 *To discuss the most suitable setup for your location, contact Maxy Engineering at*  
-> ✉️ **office@MAXYEngineering.com.au**  
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="images/logger.jpg" alt="Remote Logger" width="100%">
+    </td>
+    <td width="50%" valign="top">
+      <img src="images/raspberry_pi.jpg" alt="Headless Raspberry Pi Setup" width="100%">
+      <br>
+      <img src="images/aquaTroll200.jpg" alt="AquaTroll 200" width="100%">
+    </td>
+  </tr>
+</table>
+
+> *To discuss the most suitable setup for your location, contact Maxy Engineering at*  
+> 📩 **office@MAXYEngineering.com.au**  
 > 📞 **0478 221 776**
 
 ## How it Works
@@ -27,11 +39,11 @@ The main script, `runPipeline.py`, orchestrates the following steps:
 2.  **Scraping Weather Data (`weatherStation.py`):** Uses a GET Request and BeautifulSoup to scrape weather website for daily barometric pressure readings.
 3.  **Data Validation & Calibration (`dataValidation.py`):**
     *   Reads CSVs from `data_downloads/`.
-    *   Cleans and validates the data (Coverts types. Also handles erroneous and missing values).
+    *   Cleans and validates the data (Converts types. Also handles erroneous and missing values).
     *   Retrieves external barometric data (by calling `weatherStation.py`).
     *   Merges external weather data with the logger data based on date.
     *   Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the  external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
-    *   Consolidates processed data into final output CSV files (`validatedDepthData.csv` and `greaterPBOPools.csv`) saved in `transformed_data/`.
+    *   Consolidates processed data into final output CSV files (`validatedDepthData.csv` and `SWLVLGenericTemplate_greaterPBOPools.csv`) saved in `transformed_data/`.
 4.  **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients.
 
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
@@ -72,7 +84,7 @@ Configuration for site details, email settings, and target URLs is managed throu
     ```bash
     python -m playwright
     ```
-    *Note for Raspberry Pi:* This was built and tested on a Raspberry Pi 5 running 64-bit OS. For deployment, it's headless on a Raspberry Pi Zero W using Pi OS Lite to keep power usage and costs low. If issues come up, check compatibility for your specific Pi model and install any missing system dependencies manually.
+    *Note for OS:* This was built and tested on macOS and Raspberry Pi 5 64-bit OS. For deployment, it's headless on 64-bit OS Lite. Use Windows at your own peril.
 
 ## Running the Pipeline (manually)
 
