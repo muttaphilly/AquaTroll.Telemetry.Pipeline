@@ -11,24 +11,23 @@ This project links Maxy’s hardware with a software system that automates key p
 
 ## Hardware Components
 
-#code
-## Hardware Components
-
 <table>
   <tr>
-    <td width="50%" valign="top">
-      <img src="images/logger.jpg" alt="Remote Logger" width="100%">
+    <td width="50%" valign="top" align="center"> 
+      <strong>Remote Logger</strong><br><br> 
+      <img src="images/logger.jpg" alt="Remote Logger" width="90%"> 
     </td>
-    <td width="50%" valign="top">
-      <img src="images/raspberry_pi.jpg" alt="Headless Raspberry Pi Setup" width="100%">
-      <br>
-      <img src="images/aquaTroll200.jpg" alt="AquaTroll 200" width="100%">
+    <td width="50%" valign="top" align="center"> 
+      <strong>Headless Pi & AquaTroll</strong><br><br> 
+      <img src="images/raspberry_pi.jpg" alt="Headless Raspberry Pi Setup" width="90%">
+      <br><br>
+      <img src="images/aquaTroll200.jpg" alt="AquaTroll 200" width="90%">
     </td>
   </tr>
 </table>
 
-> *To discuss the most suitable setup for your location, contact Maxy Engineering at*  
-> 📩 **office@MAXYEngineering.com.au**  
+> 📩 *To discuss the most suitable setup for your location, contact Maxy Engineering at*
+> ✉️ **office@MAXYEngineering.com.au**
 > 📞 **0478 221 776**
 
 ## How it Works
@@ -63,7 +62,7 @@ Configuration for site details, email settings, and target URLs is managed throu
     The Pi requires a virtual environment to manage Python dependencies.
     ```bash
     python3 -m venv venv
-    source venv/bin/activate  # On Linux/macOS
+    source venv/bin/activate
     ```
 
 4.  **Install Python Dependencies:**
@@ -84,7 +83,7 @@ Configuration for site details, email settings, and target URLs is managed throu
     ```bash
     python -m playwright
     ```
-    *Note for OS:* This was built and tested on macOS and Raspberry Pi 5 64-bit OS. For deployment, it's headless on 64-bit OS Lite. Use Windows at your own peril.
+    *Note for OS:* This was built and tested on macOS and Raspberry Pi 5 64-bit OS. For deployment, it's headless on 64-bit OS Lite. Use Windows at your own peril— corporate restrictons, inconsistent dependencies or weird shell behavior will break stuff.
 
 ## Running the Pipeline (manually)
 
