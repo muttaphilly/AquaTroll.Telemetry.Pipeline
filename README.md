@@ -26,8 +26,8 @@ This project links Maxy’s hardware with a software system that automates key p
   </tr>
 </table>
 
-> *To discuss the most suitable setup for your location, contact Maxy Engineering at*
-> 📩 **office@MAXYEngineering.com.au**
+> *To discuss the most suitable setup for your location, contact Maxy Engineering at:*
+> ✉️ **office@MAXYEngineering.com.au**
 > 📞 **0478 221 776**
 
 ## How it Works
