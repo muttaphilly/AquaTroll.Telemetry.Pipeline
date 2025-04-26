@@ -14,7 +14,7 @@ if __name__ == "__main__":
     input_folder = os.path.join(project_root, 'data_downloads')
     output_folder = os.path.join(project_root, 'transformed_data')
     output_file = os.path.join(output_folder, 'validatedDepthData.csv')
-    pbo_pools_file = os.path.join(output_folder, 'greaterPBOPools.csv')
+    pbo_pools_file = os.path.join(output_folder, 'SWLVLGenericTemplate_greaterPBOPools.csv')
     log_file = os.path.join(output_folder, 'dataValidation.log')
 
     # Step 1: Run scrapers
