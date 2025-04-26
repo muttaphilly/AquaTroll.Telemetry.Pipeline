@@ -13,12 +13,12 @@ This project links Maxy’s hardware with a software system that automates key p
 
 <table>
   <tr>
-    <td width="50%" valign="top" align="center"> 
-      <strong>Remote Logger</strong><br><br> 
-      <img src="images/logger.jpg" alt="Remote Logger" width="90%"> 
+    <td width="50%" valign="top" align="center">
+      <strong>Maxxy Remote Logging Unit</strong><br><br>
+      <img src="images/logger.jpg" alt="Remote Logger" width="100%"> 
     </td>
-    <td width="50%" valign="top" align="center"> 
-      <strong>Headless Pi & AquaTroll</strong><br><br> 
+    <td width="50%" valign="top" align="center">
+      <strong>Headless Pi & AquaTroll200</strong><br><br>
       <img src="images/raspberry_pi.jpg" alt="Headless Raspberry Pi Setup" width="90%">
       <br><br>
       <img src="images/aquaTroll200.jpg" alt="AquaTroll 200" width="90%">
@@ -26,8 +26,8 @@ This project links Maxy’s hardware with a software system that automates key p
   </tr>
 </table>
 
-> 📩 *To discuss the most suitable setup for your location, contact Maxy Engineering at*
-> ✉️ **office@MAXYEngineering.com.au**
+> *To discuss the most suitable setup for your location, contact Maxy Engineering at*
+> 📩 **office@MAXYEngineering.com.au**
 > 📞 **0478 221 776**
 
 ## How it Works
