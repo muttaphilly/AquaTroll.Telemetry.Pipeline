@@ -14,7 +14,7 @@ This project links Maxy’s hardware with a software system that automates key p
 <table>
   <tr>
     <td width="50%" valign="top" align="center">
-      <strong>Maxxy Remote Logging Unit</strong><br><br>
+      <strong>Maxy Remote Logging Unit</strong><br><br>
       <img src="images/logger.jpg" alt="Remote Logger" width="100%"> 
     </td>
     <td width="50%" valign="top" align="center">
@@ -95,20 +95,28 @@ python runPipeline.py
 
 ## Automating Pipeline with Cron (Linux/Raspberry Pi)
 
-To setup a scheduled run: 
+To setup a scheduled run:
 
-1.  Open the crontab editor in:
+1.  Open the crontab editor for the current user:
     ```bash
     crontab -e
     ```
-2.  Add line below to schedule script. For optimising the barometric calibrations, recomending setting for 17:00 on the 28th of every month:
+
+2.  Add the following line at the bottom of the file to schedule the script. This example runs at 17:00 (5 PM) on the 28th of every month:
     ```cron
-    0 17 28 * * /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/venv/bin/python /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /home/muttaphilly/Desktop/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
+    # Run AquaTroll Pipeline monthly
+    0 17 28 * * /path/to/your/project/AquaTroll.Telemetry.Pipeline/venv/bin/python /path/to/your/project/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /path/to/your/project/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
     ```
-* Make sure to replace project paths with your saved location.
+    *   **Important:** Replace `/path/to/your/project/` with the actual absolute path to where you cloned the `AquaTroll.Telemetry.Pipeline` directory (e.g., `/home/pi/`).
+    *   This command explicitly uses the Python interpreter inside your virtual environment (`venv/bin/python`).
+    *   Output and errors from the script will be appended (`>>`) to `cron.log` in the project directory.
 
-* This uses the Python interpreter inside your virtual environment.
+3.  Save and close the editor.
+    *   For `nano`: Press `Ctrl+O`, Enter, then `Ctrl+X`.
+    *   You should see a message like `crontab: installing new crontab`.
 
-* Output and errors are logged to cron.log in the project root.
-
-3.  Save and close the editor. Cron will automatically pick up the schedule.
+4.  **Verify the cron job was added:** List the active cron jobs for the user:
+    ```bash
+    crontab -l
+    ```
+    You should see the line you just added listed in the output. This confirms the schedule is active.
