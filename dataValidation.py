@@ -171,7 +171,7 @@ def create_placeholder_data(site_name: str, reason: str, timestamp_for_entry: Op
 
     Returns:
         pd.DataFrame: A DataFrame containing one row with placeholder values and the
-                      reason embedded in the 'Other - Comments - Text' column.
+                      reason embedded in the 'OTHER - Comments - Text' column.
     """
     logger_instance.warning(f"Creating placeholder data for site '{site_name}': {reason}")
     # get date at time of running script. Done to filter out any old data
@@ -185,7 +185,7 @@ def create_placeholder_data(site_name: str, reason: str, timestamp_for_entry: Op
         'Depth(m)raw': [np.nan],
         'Barometric Pressure(RAW)[Main Buffer] (hPa)': [np.nan],
         # reason variable passed in to provide the why
-        'Other - Comments - Text': [f"{reason} on {placeholder_datetime_comment}"]
+        'OTHER - Comments - Text': [f"{reason} on {placeholder_datetime_comment}"]
     })
 
     return placeholder_df
@@ -499,13 +499,13 @@ def consolidate_csv_files(
         # Begin dealing with any missing/bad data
         logger.info("Applying specific comments based on data staleness and values...")
         # Separate missing data observations (created by process_site_file or for missing files)
-        # Ensure the 'Other - Comments - Text' column exists. If not, create it empty.
-        if 'Other - Comments - Text' not in final_df.columns:
-            final_df['Other - Comments - Text'] = '' # Initialise with empty strings
+        # Ensure the 'OTHER - Comments - Text' column exists. If not, create it empty.
+        if 'OTHER - Comments - Text' not in final_df.columns:
+            final_df['OTHER - Comments - Text'] = '' # Initialise with empty strings
         # Fill NaN values with empty strings to allow safe use of .str accessor
-        final_df['Other - Comments - Text'] = final_df['Other - Comments - Text'].fillna('')
+        final_df['OTHER - Comments - Text'] = final_df['OTHER - Comments - Text'].fillna('')
         # Apply the .str method
-        original_comment_mask = final_df['Other - Comments - Text'].str.startswith("Placeholder:")
+        original_comment_mask = final_df['OTHER - Comments - Text'].str.startswith("Placeholder:")
         
         final_df_original_placeholders = final_df[original_comment_mask].copy()
         final_df_data_to_process = final_df[~original_comment_mask].copy()
@@ -549,11 +549,11 @@ def consolidate_csv_files(
 
                  # Apply comment only where the condition is met and comment is currently empty/NaN
                  # This prevents overwriting original placeholders if logic changes later
-                 current_comment_empty = final_df_data_to_process['Other - Comments - Text'].isna() | \
-                                         (final_df_data_to_process['Other - Comments - Text'] == '')
+                 current_comment_empty = final_df_data_to_process['OTHER - Comments - Text'].isna() | \
+                                         (final_df_data_to_process['OTHER - Comments - Text'] == '')
                  apply_comment_mask = zero_neg_mask & current_comment_empty
 
-                 final_df_data_to_process.loc[apply_comment_mask, 'Other - Comments - Text'] = zero_neg_comment
+                 final_df_data_to_process.loc[apply_comment_mask, 'OTHER - Comments - Text'] = zero_neg_comment
                  num_zero_comments_applied = apply_comment_mask.sum()
                  if num_zero_comments_applied > 0:
                     logger.info(f"Applied zero/negative depth comment to {num_zero_comments_applied} rows.")
@@ -600,13 +600,12 @@ def consolidate_csv_files(
             # Pass the result of the comment logic to the calculation
             final_df_processed = calculate_adjusted_depth(final_df_commented, water_density, logger, reference_density)
 
-
         # --- Prepare Final Output Columns Order ---
         # Use final_df_processed (the result from calculate_adjusted_depth)
         final_column_order = [
             'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'BomBaro',
             'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Depth(m)raw',
-            'Depth(m)adjusted', 'Other - Comments - Text'
+            'Depth(m)adjusted', 'OTHER - Comments - Text'
         ]
         # Ensure all required columns exist in the final processed DataFrame
         for col in final_column_order:
@@ -633,7 +632,7 @@ def consolidate_csv_files(
                 # Create pbo_df by selecting rows where adjusted depth is NOT NaN
                 pbo_df = final_df_output.loc[
                     final_df_output['Depth(m)adjusted'].notna(), # Key filter to exclude placeholders
-                    ['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)adjusted', 'Other - Comments - Text']
+                    ['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)adjusted', 'OTHER - Comments - Text']
                 ].copy() # Use .copy()
 
                 if not pbo_df.empty:
@@ -645,12 +644,14 @@ def consolidate_csv_files(
                     # Define the specific column order for this file
                     pbo_column_order = [
                         'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)',
-                        'LEVEL - DEPTH TO WATER - m (INPUT)', 'Other - Comments - Text'
-                    ]
+                        'LEVEL - DEPTH TO WATER - m (INPUT)',
+                        'LEVEL - WATER LEVEL - mAHD (INPUT)', # Needed to match expected coloumns of database upload csv
+                        'OTHER - Comments - Text'
+]
                     # Ensure all columns exist before reordering
                     for col in pbo_column_order:
                         if col not in pbo_df.columns:
-                             pbo_df[col] = np.nan # Add if missing, although unlikely here
+                             pbo_df[col] = np.nan # handle the creation of unexpected columns (and populate with NaN)
                     pbo_df = pbo_df[pbo_column_order] # Reorder/select columns
 
                     # Format DateTime specifically for pbo_df output
@@ -676,7 +677,6 @@ def consolidate_csv_files(
         except Exception as e:
             logger.error(f"Error creating or saving '{os.path.basename(greater_pbo_output_file)}': {e}.", exc_info=True)
 
-
         # --- Create and Save Environmental Database File (SWLVLGenericTemplate_validatedDepthData.csv) ---
         # Use final_df_output (which contains data rows AND placeholder rows with comments)
         logger.info(f"Preparing main output file: {os.path.basename(output_file)}")
@@ -696,8 +696,8 @@ def consolidate_csv_files(
         total_processed = len(processed_sites | missing_site_files) # Union of found and missing expected sites
         logger.info(f" - Considered {total_processed} expected or found sites.")
         # Recalculate placeholder sites based on final output
-        final_placeholder_sites = set(final_df_output.loc[final_df_output['Other - Comments - Text'].notna() &
-                                                        final_df_output['Other - Comments - Text'].str.contains("Placeholder:|No telemetry data|equipment issue", na=False), 'Sample Point'])
+        final_placeholder_sites = set(final_df_output.loc[final_df_output['OTHER - Comments - Text'].notna() &
+                                                        final_df_output['OTHER - Comments - Text'].str.contains("Placeholder:|No telemetry data|equipment issue", na=False), 'Sample Point'])
         final_data_sites = set(final_df_output['Sample Point']) - final_placeholder_sites
 
         logger.info(f" - Sites with data rows in final output: {len(final_data_sites)} ({', '.join(sorted(final_data_sites))})")
