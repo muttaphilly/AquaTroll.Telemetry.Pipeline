@@ -85,13 +85,21 @@ def send_email_with_attachment(recipient_emails, subject, body, attachment_path)
         if 'server' in locals() and server:
             server.quit()
 
+# ------- Handle email distribution with comma-seperated string
+def parse_email_list(email_string):
+    if not email_string:
+        return []
+    
+    # Split by comma, strip whitespace, and filter out empty strings
+    return [email.strip() for email in email_string.split(',') if email.strip()]
+
 # ------- Email to environment team (for EMS)
 def send_validated_data_email(attachment_path):
-    recipient1 = os.getenv('RECIPIENT_DEPTH_DATA_1')
-    recipient2 = os.getenv('RECIPIENT_DEPTH_DATA_2')
-    recipients = [r for r in [recipient1, recipient2] if r]
+    recipient_string = os.getenv('RECIPIENT_DEPTH_DATA')
+    recipients = parse_email_list(recipient_string)
+    
     if not recipients:
-        log.warning("Para Enviro email list is not defined. Skipping email.")
+        log.warning("Depth data email list is not defined. Skipping email.")
         return False
     
     subject = os.getenv('DEPTH_DATA_EMAIL_SUBJECT', "Paraburdoo EMP Pools Logger Data Report")
@@ -102,8 +110,9 @@ def send_validated_data_email(attachment_path):
 
 # ------- Auto-upload to environmental database
 def send_pbo_pools_email(attachment_path):
-    recipient = os.getenv('RECIPIENT_PBO_POOLS')
-    recipients = [r for r in [recipient] if r]
+    recipient_string = os.getenv('RECIPIENT_PBO_POOLS')
+    recipients = parse_email_list(recipient_string)
+    
     if not recipients:
         log.warning("Environmental database email not found. Skipping email.")
         return False
