@@ -27,6 +27,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Sauce pools
+def get_enabled_sites():
+    """Grab from ENABLED_SITES list"""
+    sites_json = os.getenv("SITES_JSON", "[]")
+    all_sites = json.loads(sites_json)
+    enabled_sites_str = os.getenv("ENABLED_SITES", "")
+    if enabled_sites_str:
+        enabled_names = [name.strip() for name in enabled_sites_str.split(",")]
+        return [site for site in all_sites if site["main_csv"].replace(".csv", "") in enabled_names]
+    # If not set, return all sites
+    return all_sites
+
 # --- Main Scraping Logic ---
 # Uses PlayWright to scrape the frontend
 def run(playwright: Playwright, download_path: str) -> None:
@@ -36,7 +48,6 @@ def run(playwright: Playwright, download_path: str) -> None:
     """
     try:
         logger.info("--- Starting Playwright Scraper ---")
-
         # Validate environment variables & project folder
         if not all([LOGIN_URL, LOGIN_USERNAME, LOGIN_PASSWORD]):
             logger.error("Missing environment variables (URL, USERNAME, PASSWORD). Exiting.")
@@ -45,11 +56,12 @@ def run(playwright: Playwright, download_path: str) -> None:
         if not download_path:
              logger.error("Missing download_path argument. Exiting.")
              return
-
         # Ensure download directory exists
         os.makedirs(download_path, exist_ok=True)
-        logger.info(f"Using download directory: {download_path}")
-        logger.info(f"Pause between sites: {PAUSE_SECONDS} seconds")
+        
+        # Get only enabled sites
+        sites_to_scrape = get_enabled_sites()
+        logger.info(f"Processing {len(sites_to_scrape)} enabled sites")
 
         # Process each site
         for i, site in enumerate(sites_to_scrape): 
@@ -104,7 +116,7 @@ def run(playwright: Playwright, download_path: str) -> None:
                 with page.expect_download(timeout=120000) as download_info:
                     page.get_by_role("button", name="Export Data to CSV File").click()
                 download = download_info.value
-                # Use main_download_path constructed with the argument
+                # main_download_path is re-assigned a value each iteration of the loop (i.e. for each site)
                 download.save_as(main_download_path)
                 logger.info(f"Level(RAW) data saved as: {main_download_path}")
 
@@ -135,10 +147,10 @@ def run(playwright: Playwright, download_path: str) -> None:
 
             except Exception as site_error:
                 logger.exception(f"An error occurred while processing site {site_name}: {site_error}")
-                # Decide if you want to continue to the next site or stop
-                # continue # Uncomment to continue with the next site despite error
+                # If error occurs, log it, close the browser and continue to next site
             finally:
-                # Close browser context and instance FOR EACH SITE
+                # finally block here to force execution after the try/except blocks,
+                # Purpose is to close Playwright browser and context, freeing up system resources for the current site.
                 if context:
                     context.close()
                     logger.info(f"Playwright context closed for {site_name}.")
