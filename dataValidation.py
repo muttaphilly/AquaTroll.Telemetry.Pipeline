@@ -663,7 +663,7 @@ def consolidate_csv_files(
                     # Format DateTime specifically for pbo_df output
                     # Check column exists and is datetime type
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-                         pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
+                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p').str.replace(r'\s+', ' ', regex=True)
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
 
@@ -688,14 +688,13 @@ def consolidate_csv_files(
         logger.info(f"Preparing main output file: {os.path.basename(output_file)}")
         if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in final_df_output.columns and pd.api.types.is_datetime64_any_dtype(final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']):
             # Apply final string formatting to the DateTime column for the main output
-            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
+            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p').str.replace(r'\s+', ' ', regex=True)
         else:
             logger.warning("DateTime column not suitable for final string formatting in main output.")
 
         # Save the main output file, including placeholders and commented rows
         final_df_output.to_csv(output_file, index=False, na_rep='')
         logger.info(f"Main output file saved: {output_file}")
-
 
         # --- Final Summary Logging ---
         logger.info("Data validation and consolidation summary:")
