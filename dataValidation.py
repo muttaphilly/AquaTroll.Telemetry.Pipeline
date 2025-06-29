@@ -666,8 +666,6 @@ def consolidate_csv_files(
                         pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = (
                             pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']
                             .dt.strftime('%d/%m/%Y %I:%M:%S %p')
-                            .str.replace(r'\s{2,}', ' ', regex=True)  # Patch for windows (creates double spaces between date and time)
-                            .str.strip()  # Make it absolute 100 any whitespaces are gone
                         )
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
@@ -696,8 +694,6 @@ def consolidate_csv_files(
             final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = (
                 final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']
                 .dt.strftime('%d/%m/%Y %I:%M:%S %p')
-                .str.replace(r'\s{2,}', ' ', regex=True)  # Removes double spaces on windows devices
-                .str.strip()  # Nuke any other leading/trailing whitespaces
             )
         else:
             logger.warning("DateTime column not suitable for final string formatting in main output.")
