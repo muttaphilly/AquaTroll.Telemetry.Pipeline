@@ -668,7 +668,7 @@ def consolidate_csv_files(
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
                         pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = (
                             pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                            .dt.strftime('%d/%m/%Y %I:%M:%S %p')
+                            .dt.strftime('%d/%m/%Y %-I:%M:%S %p')
                         )
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
@@ -696,7 +696,7 @@ def consolidate_csv_files(
             # Apply final string formatting to the DateTime column for the main output
             final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = (
                 final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                .dt.strftime('%d/%m/%Y %I:%M:%S %p')
+                .dt.strftime('%d/%m/%Y %-I:%M:%S %p')
             )
         else:
             logger.warning("DateTime column not suitable for final string formatting in main output.")
