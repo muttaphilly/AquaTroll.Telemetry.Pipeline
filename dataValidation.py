@@ -221,8 +221,11 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
 
         initial_row_count = len(df)
         try:
+            date_str = df['Date'].str.strip()
+            time_str = df['Time'].str.strip()
+            
             df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(
-                df['Date'] + ' ' + df['Time'],
+                date_str + ' ' + time_str,
                 format='%d/%m/%Y %H:%M:%S',
                 errors='coerce'
             )
