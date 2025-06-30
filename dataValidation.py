@@ -8,6 +8,7 @@ from logging import FileHandler
 from typing import Optional, Tuple, Set, Dict, List
 import weatherStation 
 import json
+import csv
 
 # --- Global Configuration ---
 SITE_CONFIG = {}
@@ -666,7 +667,7 @@ def consolidate_csv_files(
                     # Format DateTime specifically for pbo_df output
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
                         # %I instead of %-I for Windows. The No space between Y & I is delibrate. There's some weird Windows compiler thing happening
-                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y%I:%M:%S %p')
+                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %H:%M:%S %p')
                         # Remove any double spaces cause why not windows you absolute unit of an OS
                         pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = formatted_datetime.str.replace(r'\s+', ' ', regex=True)
                     else:
