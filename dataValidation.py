@@ -629,7 +629,7 @@ def consolidate_csv_files(
         site_counts = final_df_output['Sample Point'].value_counts().sort_index().to_dict()
         for site, count in site_counts.items(): logger.info(f"  - {site}: {count} row(s)")
 
-        # --- Create and Save greaterPBOPools.csv ---
+        # --- Create and Save SQL ready csv (SWLVLGenericTemplate) ---
         # Base this on final_df_output (which has comments applied and adjusted depth calculated)
         logger.info(f"Preparing secondary output file: {os.path.basename(greater_pbo_output_file)}")
         pbo_df = pd.DataFrame() # Initialise empty DataFrame
@@ -666,15 +666,14 @@ def consolidate_csv_files(
                     # Format DateTime specifically for pbo_df output
                     # Check column exists and is datetime type
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + \
-                            pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p') + \
-                            '"'
+                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = \
+                            pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %-I:%M:%S %p')
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
 
-                    # Save the filtered and formatted DataFrame
+                    # Save filtered, SQL formatted DataFrame
                     pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
-                    logger.info(f"Secondary output file saved: {greater_pbo_output_file}")
+                    logger.info(f"SQL output file saved: {greater_pbo_output_file}")
                 else:
                     # This case occurs if adjusted depth existed but was NaN for all rows
                      logger.warning(f"No rows with valid adjusted depth data found after filtering. File '{os.path.basename(greater_pbo_output_file)}' not created.")
@@ -688,17 +687,18 @@ def consolidate_csv_files(
         except Exception as e:
             logger.error(f"Error creating or saving '{os.path.basename(greater_pbo_output_file)}': {e}.", exc_info=True)
 
-        # --- Create and Save Environmental Database File (SWLVLGenericTemplate_validatedDepthData.csv) ---
-        # Use final_df_output (which contains data rows AND placeholder rows with comments)
+        # --- Create and Save one for the humans (validatedDepthData) ---
         logger.info(f"Preparing main output file: {os.path.basename(output_file)}")
+        
+        # Use final_df_output (which contains data rows AND placeholder rows with comments)
         if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in final_df_output.columns and pd.api.types.is_datetime64_any_dtype(final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-            # Apply final string formatting to the DateTime column for the main output
-            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + \
-                final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p') + \
-                '"'
+            # Also use %-I here to ensure the string being wrapped for Excel is correct.
+            date_as_string = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %-I:%M:%S %p')
+            # Wrap the clean string in the Excel formula to force text display.
+            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + date_as_string + '"'
         else:
             logger.warning("DateTime column not suitable for final string formatting in main output.")
-
+       
         # Save the main output file, including placeholders and commented rows
         final_df_output.to_csv(output_file, index=False, na_rep='')
         logger.info(f"Main output file saved: {output_file}")
