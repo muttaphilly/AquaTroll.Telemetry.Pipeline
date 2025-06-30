@@ -702,7 +702,7 @@ def consolidate_csv_files(
             logger.warning("DateTime column not suitable for final string formatting in main output.")
        
         # Save the main output file, including placeholders and commented rows
-        final_df_output.to_csv(output_file, index=False, na_rep='')
+        final_df_output.to_csv(output_file, index=False, na_rep='', quoting=csv.QUOTE_NONE, escapechar='\\')
         logger.info(f"Main output file saved: {output_file}")
 
         # --- Final Summary Logging ---
