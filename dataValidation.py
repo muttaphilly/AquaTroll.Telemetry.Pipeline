@@ -664,10 +664,11 @@ def consolidate_csv_files(
                     pbo_df = pbo_df[pbo_column_order] # Reorder/select columns
 
                     # Format DateTime specifically for pbo_df output
-                    # Check column exists and is datetime type
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = \
-                            pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %-I:%M:%S %p')
+                        # Use %I instead of %-I for Windows compatibility
+                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
+                        # Remove any double spaces cause why not windows you absolute unit of an OS
+                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = formatted_datetime.str.replace(r'\s+', ' ', regex=True)
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
 
