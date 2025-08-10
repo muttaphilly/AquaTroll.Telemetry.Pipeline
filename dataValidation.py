@@ -43,6 +43,60 @@ def load_site_config():
         SITE_CONFIG = {}
         EXPECTED_SITES = set()
 
+def format_datetime_separated(dt_series: pd.Series) -> pd.Series:
+    """
+    Format datetime by separating date and time components, then joining with single space.
+    This avoids Windows strftime spacing issues entirely.
+    """
+    def format_single_datetime(dt):
+        if pd.isna(dt):
+            return ""
+        
+        # Format date part (no AM/PM issues here)
+        date_part = dt.strftime('%d/%m/%Y')
+        
+        # Manually format time part to avoid strftime AM/PM spacing issues
+        hour_24 = dt.hour
+        minute = dt.minute
+        second = dt.second
+        
+        # Convert to 12-hour format
+        if hour_24 == 0:
+            hour_12 = 12
+            am_pm = 'AM'
+        elif hour_24 < 12:
+            hour_12 = hour_24
+            am_pm = 'AM'
+        elif hour_24 == 12:
+            hour_12 = 12
+            am_pm = 'PM'
+        else:
+            hour_12 = hour_24 - 12
+            am_pm = 'PM'
+        
+        # Format time part with guaranteed formatting
+        time_part = f"{hour_12}:{minute:02d}:{second:02d} {am_pm}"
+        
+        # Join with guaranteed single space
+        return f"{date_part} {time_part}"
+    
+    return dt_series.apply(format_single_datetime)
+
+def extract_datetime_from_formula(formula_string: str) -> str:
+    """
+    Extract clean datetime string from Excel formula format.
+    Converts '="11/07/2025 6:00:00 AM"' back to '11/07/2025 6:00:00 AM'
+    """
+    if pd.isna(formula_string) or formula_string == "":
+        return ""
+    
+    # Remove Excel formula wrapper: '="..."' -> '...'
+    if formula_string.startswith('="') and formula_string.endswith('"'):
+        return formula_string[2:-1]  # Remove first 2 chars and last char
+    else:
+        # If it's not wrapped in formula, return as-is
+        return str(formula_string)
+
 # --- Setup/configure data_validation logger object ---
 def setup_logging(log_file_path: Optional[str] = None, enable_file_logging: bool = False) -> logging.Logger:
     """Sets up the logger for the data validation process."""
@@ -609,126 +663,66 @@ def consolidate_csv_files(
                  final_df_commented['BomBaro'] = pd.to_numeric(final_df_commented['BomBaro'], errors='coerce')
             # Pass the result of the comment logic to the calculation
             final_df_processed = calculate_adjusted_depth(final_df_commented, water_density, logger, reference_density)
-
-        # --- Prepare Final Output Columns Order ---
-        # Use final_df_processed (the result from calculate_adjusted_depth)
-        final_column_order = [
-            'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'BomBaro',
-            'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Depth(m)raw',
-            'Depth(m)adjusted', 'OTHER - Comments - Text'
-        ]
-        # Ensure all required columns exist in the final processed DataFrame
-        for col in final_column_order:
-             if col not in final_df_processed.columns:
-                 final_df_processed[col] = np.nan # Add missing columns as NaN
-
-        # Select and order columns for the final output DataFrame
-        final_df_output = final_df_processed[final_column_order].copy() # Use copy to avoid SettingWithCopyWarning
-
-        logger.info("Summary of rows per site in final dataset before saving:")
-        # Use final_df_output for the summary
-        site_counts = final_df_output['Sample Point'].value_counts().sort_index().to_dict()
-        for site, count in site_counts.items(): logger.info(f"  - {site}: {count} row(s)")
-
-        # --- Create and Save SQL ready csv (SWLVLGenericTemplate) ---
-        # Base this on final_df_output (which has comments applied and adjusted depth calculated)
-        logger.info(f"Preparing secondary output file: {os.path.basename(greater_pbo_output_file)}")
-        pbo_df = pd.DataFrame() # Initialise empty DataFrame
-
+        
+        # --- Process CSVs ---
+        # --- STEP 1: PREPARE AND SAVE THE SQL IMPORT FILE ---
+        logger.info(f"Preparing secondary output file for SQL import: {os.path.basename(greater_pbo_output_file)}")
         try:
-            # Filter final_df_output for rows with valid (non-NaN) adjusted depth
-            adjusted_depth_exists = 'Depth(m)adjusted' in final_df_output.columns
-            if adjusted_depth_exists and final_df_output['Depth(m)adjusted'].notna().any():
-                # Create pbo_df by selecting rows where adjusted depth is NOT NaN
-                pbo_df = final_df_output.loc[
-                    final_df_output['Depth(m)adjusted'].notna(), # Key filter to exclude placeholders
-                    ['Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'Depth(m)adjusted', 'OTHER - Comments - Text']
-                ].copy() # Use .copy()
+            pbo_df = final_df_processed[final_df_processed['Depth(m)adjusted'].notna()].copy()
+            if not pbo_df.empty:
+                pbo_df.rename(columns={'Depth(m)adjusted': 'LEVEL - DEPTH TO WATER - m (INPUT)'}, inplace=True)
+                pbo_column_order = [
+                    'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)',
+                    'LEVEL - DEPTH TO WATER - m (INPUT)', 'LEVEL - WATER LEVEL - mAHD (INPUT)',
+                    'OTHER - Comments - Text'
+                ]
+                for col in pbo_column_order:
+                    if col not in pbo_df.columns: pbo_df[col] = np.nan
+                pbo_df = pbo_df[pbo_column_order]
 
-                if not pbo_df.empty:
-                    logger.info(f"Created pbo_df with {len(pbo_df)} rows (excluding placeholders).")
-
-                    # Rename the depth column specifically for this file
-                    pbo_df.rename(columns={'Depth(m)adjusted': 'LEVEL - DEPTH TO WATER - m (INPUT)'}, inplace=True)
-
-                    # Define the specific column order for this file
-                    pbo_column_order = [
-                        'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)',
-                        'LEVEL - DEPTH TO WATER - m (INPUT)',
-                        'LEVEL - WATER LEVEL - mAHD (INPUT)', # Needed to match expected coloumns of database upload csv
-                        'OTHER - Comments - Text'
-                    ]
-                    # Ensure all columns exist before reordering
-                    for col in pbo_column_order:
-                        if col not in pbo_df.columns:
-                            pbo_df[col] = np.nan # handle the creation of unexpected columns (and populate with NaN)
-                    pbo_df = pbo_df[pbo_column_order] # Reorder/select columns
-
-                    # Format DateTime specifically for pbo_df output
-                    if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-                        # ========================= THE FIX IS HERE =========================
-                        # Step 1: Format the datetime using a 12-hour clock (%I) to match the required AM/PM (%p).
-                        # This creates the right format, though it may have OS-specific spacing issues (e.g., on Windows).
-                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
-                        
-                        # Step 2: Sanitize the string. This removes any double spaces created by weird OS compiler things,
-                        # ensuring the final output is clean and consistent.
-                        pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = formatted_datetime.str.replace(r'\s+', ' ', regex=True)
-                        # =================================================================
-
-                    else:
-                        logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
-
-                    # Save filtered, SQL formatted DataFrame
-                    pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
-                    logger.info(f"SQL output file saved: {greater_pbo_output_file}")
-                else:
-                    logger.warning(f"No rows with valid adjusted depth data found after filtering. File '{os.path.basename(greater_pbo_output_file)}' not created.")
-
+                pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = format_datetime_separated(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'])
+                pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
+                logger.info("SQL output file saved with clean datetime string.")
             else:
-                logger.warning(f"No data with valid adjusted depth found (column missing or all NaN). File '{os.path.basename(greater_pbo_output_file)}' not created.")
-
-        except KeyError as e:
-            logger.error(f"Error preparing '{os.path.basename(greater_pbo_output_file)}': Missing column {e}.", exc_info=True)
+                logger.warning("No rows with valid adjusted depth data. SQL file not created.")
         except Exception as e:
-            logger.error(f"Error creating or saving '{os.path.basename(greater_pbo_output_file)}': {e}.", exc_info=True)
+            logger.error(f"Error creating or saving SQL file: {e}", exc_info=True)
 
-        # --- Create and Save one for the humans (validatedDepthData) ---
-        logger.info(f"Preparing main output file: {os.path.basename(output_file)}")
+        # --- STEP 2: PREPARE AND SAVE VERFICATION FILE ---
+        logger.info(f"Preparing main output file for Excel with forced Text formatting: {os.path.basename(output_file)}")
+        try:
+            excel_df = final_df_processed.copy()
+            final_column_order = [
+                'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'BomBaro',
+                'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Depth(m)raw',
+                'Depth(m)adjusted', 'OTHER - Comments - Text'
+            ]
+            for col in final_column_order:
+                if col not in excel_df.columns: excel_df[col] = np.nan
+            excel_df = excel_df[final_column_order]
 
-        # Use final_df_output (which contains data rows AND placeholder rows with comments)
-        if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in final_df_output.columns and pd.api.types.is_datetime64_any_dtype(final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-            # Apply the same robust format-then-sanitize logic for consistency.
-            # Step 1: Format the string.
-            date_as_string = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
-            # Step 2: Sanitize the string to ensure it's clean before wrapping.
-            clean_date_as_string = date_as_string.str.replace(r'\s+', ' ', regex=True)
-            
-            # Step 3: Wrap the clean string in the Excel formula to force text display.
-            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + clean_date_as_string + '"'
-        else:
-            logger.warning("DateTime column not suitable for final string formatting in main output.")
+            excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = "'" + format_datetime_separated(excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'])
+            excel_df.to_csv(output_file, index=False, na_rep='')
+            logger.info("Main output file saved as .csv with leading apostrophe to force text formatting in Excel.")
+        except Exception as e:
+            logger.error(f"Failed to create human-readable .csv file: {e}", exc_info=True)
 
-        # Save the main output file, including placeholders and commented rows
-        final_df_output.to_csv(output_file, index=False, na_rep='', quoting=csv.QUOTE_NONE, escapechar='\\')
-        logger.info(f"Main output file saved: {output_file}")
-                
-        
-        
         # --- Final Summary Logging ---
         logger.info("Data validation and consolidation summary:")
-        total_processed = len(processed_sites | missing_site_files) # Union of found and missing expected sites
+        total_processed = len(processed_sites | missing_site_files)
         logger.info(f" - Considered {total_processed} expected or found sites.")
-        # Recalculate placeholder sites based on final output
-        final_placeholder_sites = set(final_df_output.loc[final_df_output['OTHER - Comments - Text'].notna() &
-                                                        final_df_output['OTHER - Comments - Text'].str.contains("Placeholder:|No telemetry data|equipment issue", na=False), 'Sample Point'])
-        final_data_sites = set(final_df_output['Sample Point']) - final_placeholder_sites
+        
+        # Use excel_df for the final summary, as it reflects the human-readable output
+        if 'excel_df' in locals() and not excel_df.empty:
+            final_placeholder_sites = set(excel_df.loc[excel_df['OTHER - Comments - Text'].notna() &
+                                                      excel_df['OTHER - Comments - Text'].str.contains("Placeholder:|No telemetry data|equipment issue", na=False), 'Sample Point'])
+            final_data_sites = set(excel_df['Sample Point']) - final_placeholder_sites
 
-        logger.info(f" - Sites with data rows in final output: {len(final_data_sites)} ({', '.join(sorted(final_data_sites))})")
-        logger.info(f" - Sites with placeholder/comment-only rows in final output: {len(final_placeholder_sites)} ({', '.join(sorted(final_placeholder_sites))})")
+            logger.info(f" - Sites with data rows in final output: {len(final_data_sites)} ({', '.join(sorted(final_data_sites))})")
+            logger.info(f" - Sites with placeholder/comment-only rows in final output: {len(final_placeholder_sites)} ({', '.join(sorted(final_placeholder_sites))})")
+        
         if failed_processing_sites:
-             # Note: Failed sites might end up as placeholders if caught correctly
-             logger.error(f" - Sites with critical processing errors reported earlier: {len(failed_processing_sites)} ({', '.join(sorted(failed_processing_sites))})")
+            logger.error(f" - Sites with critical processing errors reported earlier: {len(failed_processing_sites)} ({', '.join(sorted(failed_processing_sites))})")
 
         logger.info("Processing Complete.")
 
