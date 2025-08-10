@@ -77,6 +77,9 @@ def run(playwright: Playwright, download_path: str) -> None:
             main_download_path = os.path.join(download_path, main_csv_filename)
             baro_download_path = os.path.join(download_path, baro_csv_filename)
 
+            # The main URL for the site's data channels list
+            target_url = f"https://neon1.unidata.com.au/data-channels.aspx?id={nav_option}"
+
             logger.info(f"--- Processing site: {site_name} ({i+1}/{len(sites_to_scrape)}) ---")
 
             try:
@@ -92,21 +95,14 @@ def run(playwright: Playwright, download_path: str) -> None:
                 page.locator("#txtPassword").click()
                 page.locator("#txtPassword").fill(LOGIN_PASSWORD)
                 page.get_by_role("button", name="Login").click()
-                logger.info("Waiting for post-login element...")
-                page.wait_for_selector("#ctlMenu_ctlNodeMenu_gridNodeList_lstNodes_1", timeout=60000)
-                logger.info(f"Logged in successfully for {site_name}")
+                logger.info("Login successful. Waiting for initial page load to complete...")
+                page.wait_for_load_state("networkidle", timeout=60000)
 
-                # Navigate to the correct channel
-                logger.info(f"Navigating to node option: {nav_option}")
-                page.locator("#ctlMenu_ctlNodeMenu_gridNodeList_lstNodes_1").select_option("-2")
+                # --- Download Main Data (Level RAW) ---
+                logger.info(f"Navigating to {target_url} for Level data")
+                page.goto(target_url)
                 page.wait_for_load_state("networkidle", timeout=60000)
-                page.locator("#ctlMenu_ctlNodeMenu_gridNodeList_lstNodes_1").select_option(nav_option)
-                page.wait_for_load_state("networkidle", timeout=60000)
-                page.locator("#ctlMenu_ctlNodeMenu_gridNodeList_hrefViewNode_1").click()
-                page.wait_for_load_state("networkidle", timeout=60000)
-                logger.info(f"Navigation complete for {site_name}")
-
-                # Download Main Data (Level RAW)
+                
                 logger.info(f"Downloading Level(RAW) data for {site_name}")
                 page.get_by_role("link", name="Level(RAW)[Main Buffer]").click()
                 page.wait_for_load_state("networkidle", timeout=60000)
@@ -116,19 +112,15 @@ def run(playwright: Playwright, download_path: str) -> None:
                 with page.expect_download(timeout=120000) as download_info:
                     page.get_by_role("button", name="Export Data to CSV File").click()
                 download = download_info.value
-                # main_download_path is re-assigned a value each iteration of the loop (i.e. for each site)
                 download.save_as(main_download_path)
                 logger.info(f"Level(RAW) data saved as: {main_download_path}")
 
-                # Download Barometric Data
+                # --- Download Barometric Data ---
+                logger.info("Resetting page state by navigating back to the main data channel list.")
+                page.goto(target_url)
+                page.wait_for_load_state("networkidle", timeout=60000)
+                
                 logger.info(f"Downloading Barometric Pressure(RAW) data for {site_name}")
-                # Navigate back or directly to the baro link if possible
-                try:
-                    page.get_by_role("link", name="Displayed").click(timeout=10000)
-                except Exception:
-                    logger.warning("Could not click 'Displayed' link, proceeding.")
-                    pass # Continue even if 'Displayed' link isn't found or clickable
-
                 page.get_by_role("link", name="Barometric Pressure(RAW)[Main").click()
                 page.wait_for_load_state("networkidle", timeout=60000)
                 page.get_by_role("radio", name="Table").check()
@@ -147,10 +139,7 @@ def run(playwright: Playwright, download_path: str) -> None:
 
             except Exception as site_error:
                 logger.exception(f"An error occurred while processing site {site_name}: {site_error}")
-                # If error occurs, log it, close the browser and continue to next site
             finally:
-                # finally block here to force execution after the try/except blocks,
-                # Purpose is to close Playwright browser and context, freeing up system resources for the current site.
                 if context:
                     context.close()
                     logger.info(f"Playwright context closed for {site_name}.")
@@ -158,14 +147,11 @@ def run(playwright: Playwright, download_path: str) -> None:
                     browser.close()
                     logger.info(f"Playwright browser closed for {site_name}.")
 
-            # Pause before processing the next site
-            # Use index 'i' from enumerate to check if it's not the last site
             if i < len(sites_to_scrape) - 1:
                  logger.info(f"Pausing for {PAUSE_SECONDS} seconds before next site...")
                  time.sleep(PAUSE_SECONDS)
 
     except Exception as e:
-        # Catch exceptions outside the loop (e.g., initial setup errors)
         logger.exception(f"A critical error occurred outside the site loop: {e}")
     finally:
         logger.info("--- Playwright Scraper Finished ---")

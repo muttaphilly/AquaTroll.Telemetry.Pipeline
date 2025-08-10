@@ -657,19 +657,25 @@ def consolidate_csv_files(
                         'LEVEL - DEPTH TO WATER - m (INPUT)',
                         'LEVEL - WATER LEVEL - mAHD (INPUT)', # Needed to match expected coloumns of database upload csv
                         'OTHER - Comments - Text'
-]
+                    ]
                     # Ensure all columns exist before reordering
                     for col in pbo_column_order:
                         if col not in pbo_df.columns:
-                             pbo_df[col] = np.nan # handle the creation of unexpected columns (and populate with NaN)
+                            pbo_df[col] = np.nan # handle the creation of unexpected columns (and populate with NaN)
                     pbo_df = pbo_df[pbo_column_order] # Reorder/select columns
 
                     # Format DateTime specifically for pbo_df output
                     if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in pbo_df.columns and pd.api.types.is_datetime64_any_dtype(pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-                        # %I instead of %-I for Windows. The No space between Y & I is delibrate. There's some weird Windows compiler thing happening
-                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %H:%M:%S %p')
-                        # Remove any double spaces cause why not windows you absolute unit of an OS
+                        # ========================= THE FIX IS HERE =========================
+                        # Step 1: Format the datetime using a 12-hour clock (%I) to match the required AM/PM (%p).
+                        # This creates the right format, though it may have OS-specific spacing issues (e.g., on Windows).
+                        formatted_datetime = pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
+                        
+                        # Step 2: Sanitize the string. This removes any double spaces created by weird OS compiler things,
+                        # ensuring the final output is clean and consistent.
                         pbo_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = formatted_datetime.str.replace(r'\s+', ' ', regex=True)
+                        # =================================================================
+
                     else:
                         logger.warning("Could not format DateTime for greaterPBOPools.csv as it's missing or not datetime type in pbo_df.")
 
@@ -677,11 +683,9 @@ def consolidate_csv_files(
                     pbo_df.to_csv(greater_pbo_output_file, index=False, na_rep='')
                     logger.info(f"SQL output file saved: {greater_pbo_output_file}")
                 else:
-                    # This case occurs if adjusted depth existed but was NaN for all rows
-                     logger.warning(f"No rows with valid adjusted depth data found after filtering. File '{os.path.basename(greater_pbo_output_file)}' not created.")
+                    logger.warning(f"No rows with valid adjusted depth data found after filtering. File '{os.path.basename(greater_pbo_output_file)}' not created.")
 
             else:
-                 # This case occurs if 'Depth(m)adjusted' column didn't exist or was all NaN initially
                 logger.warning(f"No data with valid adjusted depth found (column missing or all NaN). File '{os.path.basename(greater_pbo_output_file)}' not created.")
 
         except KeyError as e:
@@ -691,20 +695,26 @@ def consolidate_csv_files(
 
         # --- Create and Save one for the humans (validatedDepthData) ---
         logger.info(f"Preparing main output file: {os.path.basename(output_file)}")
-        
+
         # Use final_df_output (which contains data rows AND placeholder rows with comments)
         if 'Date Time (dd/mm/yyyy hh24:mi:ss)' in final_df_output.columns and pd.api.types.is_datetime64_any_dtype(final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)']):
-            # Also use %-I here to ensure the string being wrapped for Excel is correct.
-            date_as_string = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %-I:%M:%S %p')
-            # Wrap the clean string in the Excel formula to force text display.
-            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + date_as_string + '"'
+            # Apply the same robust format-then-sanitize logic for consistency.
+            # Step 1: Format the string.
+            date_as_string = final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.strftime('%d/%m/%Y %I:%M:%S %p')
+            # Step 2: Sanitize the string to ensure it's clean before wrapping.
+            clean_date_as_string = date_as_string.str.replace(r'\s+', ' ', regex=True)
+            
+            # Step 3: Wrap the clean string in the Excel formula to force text display.
+            final_df_output['Date Time (dd/mm/yyyy hh24:mi:ss)'] = '="' + clean_date_as_string + '"'
         else:
             logger.warning("DateTime column not suitable for final string formatting in main output.")
-       
+
         # Save the main output file, including placeholders and commented rows
         final_df_output.to_csv(output_file, index=False, na_rep='', quoting=csv.QUOTE_NONE, escapechar='\\')
         logger.info(f"Main output file saved: {output_file}")
-
+                
+        
+        
         # --- Final Summary Logging ---
         logger.info("Data validation and consolidation summary:")
         total_processed = len(processed_sites | missing_site_files) # Union of found and missing expected sites
