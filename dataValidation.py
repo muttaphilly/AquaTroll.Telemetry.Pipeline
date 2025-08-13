@@ -354,13 +354,25 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
     """
     Calculates adjusted depth based on logger and external barometric pressure.
     Adds 'Depth(m)adjusted' column to the DataFrame.
+    
+    Only applies adjustment when:
+    1. Raw depth > 0.3m (avoids corrections overwhelming shallow/dry readings)
+    2. Barometric difference > 5 hPa (avoids corrections for sensor noise)
     """
     logger.info("Calculating adjusted depth based on barometric differences...")
     df_copy = df.copy()
 
     HPA_TO_PSI = 0.0145038
-    CONVERSION_FACTOR = 0.70307 # AquaTroll m/(PSI/SG)
-
+    CONVERSION_FACTOR = 0.70307 # Conversion factor (0.70307) translates pressure differential (PSI) into equivalent water column height (meters) per AquaTroll specifications
+    
+    # --- Thresholds to avoid inappropriate corrections ---
+    """
+    Large systematic pressure differences (40-50 hPa observed) between weather station and logger
+    can overwhelm shallow depth readings, creating misleading negative values for operational sites
+    """ 
+    MIN_DEPTH_THRESHOLD = 0.3  # meters - prevents barometric corrections from very shallow pools
+    MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for minor atmospheric pressure variations when sensors are closely matched; current data shows 40-50 hPa systematic offset suggesting elevation/calibration differences
+    
     if reference_density <= 0:
         logger.error("Reference density must be positive. Cannot calculate adjusted depth.")
         df_copy['Depth(m)adjusted'] = np.nan
@@ -381,24 +393,44 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
     df_copy = convert_to_numeric(df_copy, required_cols)
     df_copy['Depth(m)adjusted'] = np.nan
 
-    mask = (
+    # Base mask for rows with complete data
+    complete_data_mask = (
         df_copy['Depth(m)raw'].notna() &
         df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].notna() &
         df_copy['BomBaro'].notna()
     )
 
-    eligible_rows_count = mask.sum()
-    logger.info(f"Found {eligible_rows_count} rows eligible for depth adjustment calculation.")
+    # Calculate barometric difference for threshold evaluation
+    delta_p_hpa = df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'] - df_copy['BomBaro']
+    
+    # Combined mask: complete data + meets minimum thresholds
+    adjustment_mask = (
+        complete_data_mask &
+        (df_copy['Depth(m)raw'] > MIN_DEPTH_THRESHOLD) &
+        (abs(delta_p_hpa) > MIN_BARO_DIFF_THRESHOLD)
+    )
 
-    if eligible_rows_count > 0:
-        delta_p_hpa = df_copy.loc[mask, 'Barometric Pressure(RAW)[Main Buffer] (hPa)'] - df_copy.loc[mask, 'BomBaro']
-        delta_p_psi = delta_p_hpa * HPA_TO_PSI
+    eligible_rows_count = complete_data_mask.sum()
+    threshold_filtered_count = adjustment_mask.sum()
+    logger.info(f"Found {eligible_rows_count} rows with complete data for depth adjustment.")
+    logger.info(f"Applied thresholds: depth > {MIN_DEPTH_THRESHOLD}m, baro diff > {MIN_BARO_DIFF_THRESHOLD} hPa")
+    logger.info(f"Rows meeting thresholds for adjustment: {threshold_filtered_count}")
+
+    if threshold_filtered_count > 0:
+        delta_p_psi = delta_p_hpa[adjustment_mask] * HPA_TO_PSI
         depth_adjustment_m = CONVERSION_FACTOR * delta_p_psi / SG
-        df_copy.loc[mask, 'Depth(m)adjusted'] = df_copy.loc[mask, 'Depth(m)raw'] + depth_adjustment_m
+        df_copy.loc[adjustment_mask, 'Depth(m)adjusted'] = df_copy.loc[adjustment_mask, 'Depth(m)raw'] + depth_adjustment_m
         df_copy['Depth(m)adjusted'] = df_copy['Depth(m)adjusted'].round(2)
-        logger.info(f"Applied depth adjustment to {eligible_rows_count} rows.")
+        logger.info(f"Applied depth adjustment to {threshold_filtered_count} rows.")
     else:
-        logger.warning("No rows found with complete data for depth adjustment calculation.")
+        logger.warning("No rows found meeting threshold criteria for depth adjustment calculation.")
+
+    # For rows with complete data but not meeting thresholds, copy raw depth to adjusted
+    threshold_excluded_mask = complete_data_mask & ~adjustment_mask
+    threshold_excluded_count = threshold_excluded_mask.sum()
+    if threshold_excluded_count > 0:
+        df_copy.loc[threshold_excluded_mask, 'Depth(m)adjusted'] = df_copy.loc[threshold_excluded_mask, 'Depth(m)raw']
+        logger.info(f"Copied raw depth to adjusted (no correction applied) for {threshold_excluded_count} rows below thresholds.")
 
     return df_copy
 
