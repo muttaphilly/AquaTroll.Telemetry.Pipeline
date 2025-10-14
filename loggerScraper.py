@@ -72,6 +72,9 @@ def run(playwright: Playwright, download_path: str) -> None:
             nav_option = site["nav_option"]
             main_csv_filename = site["main_csv"]
             baro_csv_filename = site["baro_csv"]
+            
+            # Check if this is a PSI-based site
+            uses_psi = (nav_option == "18096")  # ERP3
 
             # Construct paths using download_path
             main_download_path = os.path.join(download_path, main_csv_filename)
@@ -120,8 +123,15 @@ def run(playwright: Playwright, download_path: str) -> None:
                 page.goto(target_url)
                 page.wait_for_load_state("networkidle", timeout=60000)
                 
-                logger.info(f"Downloading Barometric Pressure(RAW) data for {site_name}")
-                page.get_by_role("link", name="Barometric Pressure(RAW)[Main").click()
+                if uses_psi:
+                # For sites using PSI (ERP3)
+                    logger.info(f"Downloading Pressure(RAW) data for {site_name} (PSI-based site)")
+                    page.get_by_role("link", name="Pressure(RAW)[Main").click()
+                else:
+                # Default sites using hPa
+                    logger.info(f"Downloading Barometric Pressure(RAW) data for {site_name}")
+                    page.get_by_role("link", name="Barometric Pressure(RAW)[Main").click()
+            
                 page.wait_for_load_state("networkidle", timeout=60000)
                 page.get_by_role("radio", name="Table").check()
                 page.get_by_role("radio", name="30 Days").check()
@@ -133,8 +143,7 @@ def run(playwright: Playwright, download_path: str) -> None:
                 logger.info(f"Barometric data saved as: {baro_download_path}")
 
                 # Merge the downloaded CSVs
-                merge_csv_files(main_download_path, baro_download_path)
-
+                merge_csv_files(main_download_path, baro_download_path, nav_option)
                 logger.info(f"--- Successfully processed site: {site_name} ---")
 
             except Exception as site_error:
@@ -158,42 +167,99 @@ def run(playwright: Playwright, download_path: str) -> None:
 
 # --- Merge depth and barometric data into single csv ---
 
-def merge_csv_files(main_data_path, baro_path):
+def merge_csv_files(main_data_path, baro_path, nav_option=None):
     """
-    Merge the main site data CSV with the barometric data CSV using Date and Time join.
+    Merge the main site data CSV with the barometric/pressure data CSV using Date and Time join.
+    Handles both hPa and PSI based sites.
+    CRITICAL: Preserves all original columns from both files.
     """
     if not os.path.exists(main_data_path):
         logger.error(f"Main data file not found, skipping merge: {main_data_path}")
         return
     if not os.path.exists(baro_path):
-        logger.error(f"Barometric data file not found, skipping merge: {baro_path}")
+        logger.error(f"Barometric/Pressure data file not found, skipping merge: {baro_path}")
         return
 
     try:
         logger.info(f"Attempting to merge {main_data_path} and {baro_path}")
+        
         # Read both CSV files
         main_df = pd.read_csv(main_data_path)
         baro_df = pd.read_csv(baro_path)
-
-        # Check if required columns exist
+        
+        # Log the columns found in each file for debugging
+        logger.info(f"Main CSV columns: {list(main_df.columns)}")
+        logger.info(f"Baro CSV columns: {list(baro_df.columns)}")
+        
+        # Check if main data has required columns
         if not {'Date', 'Time'}.issubset(main_df.columns):
-             logger.error(f"Missing 'Date' or 'Time' column in {main_data_path}")
-             return
-        if not {'Date', 'Time', 'Barometric Pressure(RAW)[Main Buffer] (hPa)'}.issubset(baro_df.columns):
-             logger.error(f"Missing required columns in {baro_path}")
-             return
-
-        # Merge
+            logger.error(f"Missing 'Date' or 'Time' column in main data file: {main_data_path}")
+            logger.error(f"Available columns: {list(main_df.columns)}")
+            return
+        
+        # Check if baro data has required columns
+        if not {'Date', 'Time'}.issubset(baro_df.columns):
+            logger.error(f"Missing 'Date' or 'Time' column in baro file: {baro_path}")
+            logger.error(f"Available columns: {list(baro_df.columns)}")
+            return
+        
+        # Lock in PSI if JSON nav_option matches
+        uses_psi = (nav_option == "18096" or nav_option == "15619")
+        
+        if uses_psi:
+            pressure_col = 'Pressure(RAW)[Main Buffer] (PSI)'
+        else:
+            pressure_col = 'Barometric Pressure(RAW)[Main Buffer] (hPa)'
+        
+        # Check if the expected pressure column exists
+        if pressure_col not in baro_df.columns:
+            logger.warning(f"Expected column '{pressure_col}' not found in {baro_path}")
+            logger.warning(f"Looking for any pressure-related column...")
+            # Oh pressure, where you at?
+            pressure_columns = [col for col in baro_df.columns if 'Pressure' in col or 'pressure' in col]
+            if pressure_columns:
+                pressure_col = pressure_columns[0]
+                logger.info(f"Found pressure column: {pressure_col}")
+            else:
+                logger.error(f"No pressure column found in {baro_path}")
+                return
+        
+        # Get the pressure column(s) to merge - no Date and Time cause they're the merge keys
+        baro_columns_to_merge = [col for col in baro_df.columns if col not in ['Date', 'Time']]
+        
+        logger.info(f"Merging with pressure columns: {baro_columns_to_merge}")
+        
+        # Perform the merge - keep all columns from both dataframes
         merged_df = pd.merge(
             main_df,
-            baro_df[['Date', 'Time', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']],
+            baro_df,
             on=['Date', 'Time'],
-            how='left'
+            how='left'  # Keep all rows from main_df even if no matching baro data
         )
-
-        # Overwrite original depth data csv
+        
+        # Verify merge preserved expected columns
+        essential_cols = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)']
+        missing_essential = [col for col in essential_cols if col not in merged_df.columns]
+        
+        if missing_essential:
+            logger.error(f"Merge failed - missing essential columns: {missing_essential}")
+            logger.error(f"Merged DataFrame columns: {list(merged_df.columns)}")
+            logger.error("NOT overwriting original file due to failed merge")
+            return
+        
+        # Check merge hasn't derped rows
+        if merged_df.empty:
+            logger.error(f"Merge resulted in empty DataFrame. NOT overwriting original file.")
+            return
+        
+        # Log successful merge info
+        logger.info(f"Successfully merged. Result has {len(merged_df)} rows and {len(merged_df.columns)} columns")
+        logger.info(f"Final columns: {list(merged_df.columns)}")
+        
+        # Save the merged data back to the main file
         merged_df.to_csv(main_data_path, index=False)
-        logger.info(f"Successfully merged data and saved to {main_data_path}")
+        logger.info(f"Merged data saved to {main_data_path}")
 
     except Exception as e:
         logger.exception(f"Error merging CSV files ({main_data_path}, {baro_path}): {str(e)}")
+        logger.error("Original file NOT overwritten due to merge error")

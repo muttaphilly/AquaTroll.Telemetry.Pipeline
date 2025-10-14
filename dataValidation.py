@@ -266,7 +266,18 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
             logger.warning(f"Site {site_name}: File is empty.")
             return create_placeholder_data(site_name, "CSV file was empty"), site_name, False
 
-        expected_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
+        # Get site configuration to check for pressure unit
+        config = SITE_CONFIG.get(site_name, {})
+        uses_psi = config.get('pressure_unit') == 'psi'
+        
+        # Determine expected columns based on site configuration
+        if uses_psi:
+            expected_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Pressure(RAW)[Main Buffer] (PSI)']
+            pressure_col_original = 'Pressure(RAW)[Main Buffer] (PSI)'
+        else:
+            expected_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
+            pressure_col_original = 'Barometric Pressure(RAW)[Main Buffer] (hPa)'
+            
         missing_columns = [col for col in expected_columns if col not in df.columns]
         if missing_columns:
             logger.error(f"Site {site_name}: Missing required columns: {missing_columns}. Cannot process.")
@@ -274,6 +285,7 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
 
         df['Sample Point'] = site_name
 
+        # Process datetime columns
         initial_row_count = len(df)
         try:
             date_str = df['Date'].str.strip()
@@ -290,53 +302,65 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
                 logger.warning(f"Site {site_name}: Removed {dropped_datetime} rows due to invalid source Date/Time format.")
 
             if df.empty:
-                 logger.warning(f"Site {site_name}: No valid Date/Time rows remaining. Creating placeholder.")
-                 return create_placeholder_data(site_name, "No valid Date/Time entries found"), site_name, False
+                logger.warning(f"Site {site_name}: No valid Date/Time rows remaining. Creating placeholder.")
+                return create_placeholder_data(site_name, "No valid Date/Time entries found"), site_name, False
 
         except Exception as e:
             logger.error(f"Site {site_name}: Error processing Date/Time columns: {e}.", exc_info=True)
             return None, site_name, False
 
-        numeric_cols = ['Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
+        # Convert numeric columns
+        numeric_cols = ['Level(RAW)[Main Buffer] (ft)', pressure_col_original]
         df = convert_to_numeric(df, numeric_cols)
+        
+        # Handle any PSI to hPa conversions
+        if uses_psi:
+            PSI_TO_HPA = 68.9476
+            # Keep original PSI values
+            df['Pressure(RAW)[Main Buffer] (PSI) - Original'] = df[pressure_col_original].copy()
+            # Convert
+            df['Barometric Pressure(RAW)[Main Buffer] (hPa)'] = (df[pressure_col_original] * PSI_TO_HPA).round(2)
+            logger.info(f"Site {site_name}: Converted PSI to hPa (factor: {PSI_TO_HPA})")
+            # Update numeric_cols for the NaN check
+            numeric_cols = ['Level(RAW)[Main Buffer] (ft)', 'Barometric Pressure(RAW)[Main Buffer] (hPa)']
+        
         rows_before_nan_drop = len(df)
         df.dropna(subset=numeric_cols, inplace=True)
         dropped_numeric = rows_before_nan_drop - len(df)
         if dropped_numeric > 0:
-             logger.warning(f"Site {site_name}: Removed {dropped_numeric} rows due to non-numeric values in required columns.")
+            logger.warning(f"Site {site_name}: Removed {dropped_numeric} rows due to non-numeric values in required columns.")
 
         if df.empty:
             logger.warning(f"Site {site_name}: No rows remaining after numeric conversion. Creating placeholder.")
             return create_placeholder_data(site_name, "No valid numeric data found"), site_name, False
 
+        # Filter out any negative levels
         level_col = 'Level(RAW)[Main Buffer] (ft)'
         rows_before_filter = len(df)
         df = df[df[level_col] >= 0].copy()
         dropped_filter = rows_before_filter - len(df)
         if dropped_filter > 0:
-             logger.info(f"Site {site_name}: Removed {dropped_filter} rows where '{level_col}' was less than 0.")
+            logger.info(f"Site {site_name}: Removed {dropped_filter} rows where '{level_col}' was less than 0.")
 
         if df.empty:
             logger.warning(f"Site {site_name}: No valid data remaining after filtering negative levels. Creating placeholder.")
             return create_placeholder_data(site_name, f"No data found with {level_col} >= 0"), site_name, False
 
-        config = SITE_CONFIG.get(site_name, {'depth_conversion_type': 'default'})
+        # Convert depth based on configuration
         conversion_type = config.get('depth_conversion_type', 'default')
-
+        
         if conversion_type == 'divide_by_100':
             df['Depth(m)raw'] = (df[level_col] / 100).round(2)
         else: # Default is feet to meters conversion
             FEET_TO_METERS = 0.3048
             df['Depth(m)raw'] = (df[level_col] * FEET_TO_METERS).round(2)
             if conversion_type != 'default':
-                 logger.warning(f"Site {site_name}: Unknown depth_conversion_type '{conversion_type}'. Using default (ft to m).")
+                logger.warning(f"Site {site_name}: Unknown depth_conversion_type '{conversion_type}'. Using default (ft to m).")
 
         df = df.sort_values('Date Time (dd/mm/yyyy hh24:mi:ss)')
         logger.info(f"Site {site_name}: Successfully processed {len(df)} valid data rows.") 
         return df, site_name, True
     
-    # Error handling blocks
-    # Goal here is prevent failure due to single file. Manages a problematic site (logging, placeholders, or signaling failure with None).
     except pd.errors.EmptyDataError:
         logger.warning(f"Skipping {site_name}: File is empty (caught by pd.errors.EmptyDataError).")
         return create_placeholder_data(site_name, "Empty file"), site_name, False
@@ -344,8 +368,8 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         logger.error(f"Site {site_name}: Failed to parse CSV file.", exc_info=True)
         return None, site_name, False
     except KeyError as e:
-         logger.error(f"Site {site_name}: Missing expected column during processing: {e}.", exc_info=True)
-         return None, site_name, False
+        logger.error(f"Site {site_name}: Missing expected column during processing: {e}.", exc_info=True)
+        return None, site_name, False
     except Exception as e:
         logger.error(f"Site {site_name}: Unexpected error during processing: {e}", exc_info=True)
         return None, site_name, False
@@ -527,6 +551,14 @@ def consolidate_csv_files(
         logger.info("Concatenating all site data (including initial placeholders)...")
         final_df = pd.concat(consolidated_data, ignore_index=True)
 
+        # Post-processing, remove duplicate raw pressure columns (from merge in loggerScraper)
+        columns_to_drop = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Pressure(RAW)[Main Buffer] (PSI)']
+        existing_columns_to_drop = [col for col in columns_to_drop if col in final_df.columns]
+        
+        if existing_columns_to_drop:
+            logger.info(f"Removing duplicate raw columns from merged data: {existing_columns_to_drop}")
+            final_df = final_df.drop(columns=existing_columns_to_drop)
+
         # Convert Date/Time (handles placeholders potentially stored as string)
         # Do this early to allow filtering/grouping
         final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(
@@ -594,57 +626,63 @@ def consolidate_csv_files(
         
         # Begin dealing with any missing/bad data
         logger.info("Applying specific comments based on data staleness and values...")
-        # Separate missing data observations (created by process_site_file or for missing files)
         # Ensure the 'OTHER - Comments - Text' column exists. If not, create it empty.
         if 'OTHER - Comments - Text' not in final_df.columns:
             final_df['OTHER - Comments - Text'] = '' # Initialise with empty strings
         # Fill NaN values with empty strings to allow safe use of .str accessor
         final_df['OTHER - Comments - Text'] = final_df['OTHER - Comments - Text'].fillna('')
-        # Apply the .str method
-        original_comment_mask = final_df['OTHER - Comments - Text'].str.startswith("Placeholder:")
+
+        # Separate rows with placeholders from data to be processed. Prevents losing any existing comments.
+        original_comment_mask = final_df['OTHER - Comments - Text'] != ''
         
         final_df_original_placeholders = final_df[original_comment_mask].copy()
         final_df_data_to_process = final_df[~original_comment_mask].copy()
 
         if final_df_data_to_process.empty and not final_df_original_placeholders.empty:
             logger.info("Only original placeholder data found. Skipping staleness/zero checks.")
-            final_df_commented = final_df_original_placeholders # Use only original placeholders
+            final_df_commented = final_df_original_placeholders # Use OG comments
         elif final_df_data_to_process.empty and final_df_original_placeholders.empty:
              logger.error("No data (including placeholders) remaining before comment logic. Cannot proceed.")
              return
         else:
             # --- Condition 1: Expired Data Check (>2months old) ---
+            # This logic is non-destructive. Finds the most recent data point for a stale site
+            # and adds a comment, rather than deleting all data for that site.
             two_months_ago = script_run_time - relativedelta(months=2)
             current_month_year = script_run_time.strftime("%B %Y")
 
-            latest_dates = final_df_data_to_process.groupby('Sample Point')['Date Time (dd/mm/yyyy hh24:mi:ss)'].max()
-            stale_sites = latest_dates[latest_dates < two_months_ago].index.tolist()
+            if not final_df_data_to_process.empty:
+                # Find the index of the latest (most recent) entry for each 'Sample Point'
+                latest_indices = final_df_data_to_process.groupby('Sample Point')['Date Time (dd/mm/yyyy hh24:mi:ss)'].idxmax()
+                
+                # Get a DataFrame containing only these latest entries
+                latest_entries_df = final_df_data_to_process.loc[latest_indices]
 
-            stale_placeholders = []
-            if stale_sites:
-                logger.info(f"Found stale sites (last data before {two_months_ago.date()}): {', '.join(stale_sites)}")
-                stale_reason = f"No telemetry data received for {current_month_year}" # Use formatted month/year
-                for site in stale_sites:
-                    # Create a new placeholder row using the existing function
-                    # This uses the current time, as requested for the placeholder row
-                    placeholder_df = create_placeholder_data(site, stale_reason)
-                    stale_placeholders.append(placeholder_df)
+                # From these latest entries, create a boolean mask to identify which ones are stale
+                stale_mask = latest_entries_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] < two_months_ago
+                
+                # Get the actual index labels from the original DataFrame for the stale entries
+                stale_indices_to_update = latest_entries_df[stale_mask].index
 
-                # Remove the original (now identified as stale) data rows for these sites
-                final_df_data_to_process = final_df_data_to_process[~final_df_data_to_process['Sample Point'].isin(stale_sites)]
-                logger.info(f"Removed old data for stale sites. Processing remaining {len(final_df_data_to_process)} rows for zero check.")
+                if not stale_indices_to_update.empty:
+                    stale_site_names = final_df_data_to_process.loc[stale_indices_to_update, 'Sample Point'].unique().tolist()
+                    logger.info(f"Found stale sites (last data before {two_months_ago.date()}): {', '.join(stale_site_names)}")
+                    
+                    stale_reason = f"No telemetry data received for {current_month_year}"
+                    
+                    # Apply the comment directly to the original DataFrame on the specific stale rows.
+                    # This modifies the 'OTHER - Comments - Text' column for only the latest row of each stale site.
+                    final_df_data_to_process.loc[stale_indices_to_update, 'OTHER - Comments - Text'] = stale_reason
+                    logger.info(f"Applied stale data comment to the most recent entry of {len(stale_indices_to_update)} sites.")
 
             # --- Condition 2: Zero/Negative Depth Check (on remaining non-stale, non-placeholder data) ---
             if not final_df_data_to_process.empty:
-                 # Ensure Depth(m)raw is numeric before comparison
                  final_df_data_to_process['Depth(m)raw'] = pd.to_numeric(final_df_data_to_process['Depth(m)raw'], errors='coerce')
 
-                 # Mask for rows where Depth(m)raw is <= 0 AND is not NaN
                  zero_neg_mask = (final_df_data_to_process['Depth(m)raw'] <= 0) & final_df_data_to_process['Depth(m)raw'].notna()
                  zero_neg_comment = "There is an equipment issue or the pool is dry"
 
-                 # Apply comment only where the condition is met and comment is currently empty/NaN
-                 # This prevents overwriting original placeholders if logic changes later
+                 # Placeholder goes in first row with no comment 
                  current_comment_empty = final_df_data_to_process['OTHER - Comments - Text'].isna() | \
                                          (final_df_data_to_process['OTHER - Comments - Text'] == '')
                  apply_comment_mask = zero_neg_mask & current_comment_empty
@@ -660,11 +698,7 @@ def consolidate_csv_files(
                  all_processed_frames.append(final_df_original_placeholders)
             if not final_df_data_to_process.empty:
                  all_processed_frames.append(final_df_data_to_process)
-            if stale_placeholders: # Check if list is not empty
-                # Need to concat these new DFs which might have slightly different dtypes initially
-                stale_df_combined = pd.concat(stale_placeholders, ignore_index=True)
-                all_processed_frames.append(stale_df_combined)
-
+            
             if not all_processed_frames:
                  logger.error("No data frames to combine after comment logic. Cannot proceed.")
                  return
@@ -674,7 +708,7 @@ def consolidate_csv_files(
             final_df_commented['Date Time (dd/mm/yyyy hh24:mi:ss)'] = pd.to_datetime(
                  final_df_commented['Date Time (dd/mm/yyyy hh24:mi:ss)'], errors='coerce'
             )
-            final_df_commented.dropna(subset=['Date Time (dd/mm/yyyy hh24:mi:ss)'], inplace=True) # Drop if conversion failed
+            final_df_commented.dropna(subset=['Date Time (dd/mm/yyyy hh24:mi:ss)'], inplace=True)
 
             # Sort again for final output consistency
             if not final_df_commented.empty:
@@ -687,7 +721,6 @@ def consolidate_csv_files(
         # Use final_df_commented (the result from the comment logic block)
         if final_df_commented.empty:
             logger.error("final_df_commented is empty before calculating adjusted depth.")
-            # Decide how to proceed - maybe create empty output files? For now, return.
             return
         else:
             # Ensure BomBaro is numeric before calculation
@@ -724,39 +757,37 @@ def consolidate_csv_files(
         logger.info(f"Preparing main output file for Excel with forced Text formatting: {os.path.basename(output_file)}")
         try:
             excel_df = final_df_processed.copy()
-            final_column_order = [
-                'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)', 'BomBaro',
-                'Barometric Pressure(RAW)[Main Buffer] (hPa)', 'Depth(m)raw',
-                'Depth(m)adjusted', 'OTHER - Comments - Text'
+            
+            # Define desired column order (all columns we want to see)
+            desired_column_order = [
+                'Sample Point', 
+                'Date Time (dd/mm/yyyy hh24:mi:ss)', 
+                'BomBaro',
+                'Barometric Pressure(RAW)[Main Buffer] (hPa)', 
+                'Pressure(RAW)[Main Buffer] (PSI) - Original',
+                'Depth(m)raw', 
+                'Depth(m)adjusted', 
+                'OTHER - Comments - Text'
             ]
-            for col in final_column_order:
-                if col not in excel_df.columns: excel_df[col] = np.nan
-            excel_df = excel_df[final_column_order]
-
-            excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = "'" + format_datetime_separated(excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'])
-            excel_df.to_csv(output_file, index=False, na_rep='')
-            logger.info("Main output file saved as .csv with leading apostrophe to force text formatting in Excel.")
+            
+            # Build the final column list: only include columns that exist in excel_df
+            final_columns = [col for col in desired_column_order if col in excel_df.columns]
+            
+            # Add any remaining columns that weren't in our desired list
+            remaining_cols = [col for col in excel_df.columns if col not in final_columns]
+            final_columns.extend(remaining_cols)
+            
+            # Reorder the DataFrame
+            excel_df = excel_df[final_columns]
+            
+            # Format datetime - apply string formatting but don't add apostrophe yet
+            excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'] = format_datetime_separated(excel_df['Date Time (dd/mm/yyyy hh24:mi:ss)'])
+            
+            # Save to CSV with quoting to handle the apostrophe properly
+            excel_df.to_csv(output_file, index=False, na_rep='', quoting=csv.QUOTE_NONNUMERIC)
+            logger.info(f"Main output file saved with {len(excel_df)} rows and {len(final_columns)} columns.")
         except Exception as e:
             logger.error(f"Failed to create human-readable .csv file: {e}", exc_info=True)
-
-        # --- Final Summary Logging ---
-        logger.info("Data validation and consolidation summary:")
-        total_processed = len(processed_sites | missing_site_files)
-        logger.info(f" - Considered {total_processed} expected or found sites.")
-        
-        # Use excel_df for the final summary, as it reflects the human-readable output
-        if 'excel_df' in locals() and not excel_df.empty:
-            final_placeholder_sites = set(excel_df.loc[excel_df['OTHER - Comments - Text'].notna() &
-                                                      excel_df['OTHER - Comments - Text'].str.contains("Placeholder:|No telemetry data|equipment issue", na=False), 'Sample Point'])
-            final_data_sites = set(excel_df['Sample Point']) - final_placeholder_sites
-
-            logger.info(f" - Sites with data rows in final output: {len(final_data_sites)} ({', '.join(sorted(final_data_sites))})")
-            logger.info(f" - Sites with placeholder/comment-only rows in final output: {len(final_placeholder_sites)} ({', '.join(sorted(final_placeholder_sites))})")
-        
-        if failed_processing_sites:
-            logger.error(f" - Sites with critical processing errors reported earlier: {len(failed_processing_sites)} ({', '.join(sorted(failed_processing_sites))})")
-
-        logger.info("Processing Complete.")
 
     except Exception as e:
         logger.error(f"Critical error during consolidation, comment application, or saving: {e}", exc_info=True)
