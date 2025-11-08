@@ -389,13 +389,13 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float, logger: log
     HPA_TO_PSI = 0.0145038
     CONVERSION_FACTOR = 0.70307 # Conversion factor (0.70307) translates pressure differential (PSI) into equivalent water column height (meters) per AquaTroll specifications
     
-    # --- Thresholds to avoid inappropriate corrections ---
+    # --- Thresholds to handle conversions in very shallow water bodies ---
     """
-    Large systematic pressure differences (40-50 hPa observed) between weather station and logger
-    can overwhelm shallow depth readings, creating misleading negative values for operational sites
+    Systematic pressure differences can occur in the field despite correct manual calibration.
+    Record locally observed field variations and adjust accordingly.
     """ 
     MIN_DEPTH_THRESHOLD = 0.3  # meters - prevents barometric corrections from very shallow pools
-    MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for minor atmospheric pressure variations when sensors are closely matched; current data shows 40-50 hPa systematic offset suggesting elevation/calibration differences
+    MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for minor atmospheric pressure variations when sensors are closely matched; These figures account for a 40-50 hPa systematic offset between weather station and loggers
     
     if reference_density <= 0:
         logger.error("Reference density must be positive. Cannot calculate adjusted depth.")

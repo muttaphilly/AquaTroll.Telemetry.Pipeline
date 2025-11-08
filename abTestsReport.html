@@ -1,0 +1,206 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pipeline Test Report - 2025-11-08 13:26:58</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .banner { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; 
+                   margin-bottom: 20px; background-color: #e0e0e0; }
+        .summary { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;
+                   box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-section { background: white; padding: 20px; margin-bottom: 20px; 
+                        border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-description { color: #6c757d; font-style: italic; margin: 10px 0; padding: 10px;
+                            background-color: #f8f9fa; border-left: 4px solid #667eea; }
+        .pass { color: #28a745; font-weight: bold; }
+        .fail { color: #dc3545; font-weight: bold; }
+        .warning { color: #ffc107; font-weight: bold; }
+        .skip { color: #6c757d; font-style: italic; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background-color: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6; }
+        td { padding: 8px; border-bottom: 1px solid #dee2e6; }
+        .column-list { background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .calculation-table { margin-top: 15px; }
+        .anomaly { background-color: #fff3cd; }
+        .footer { text-align: center; color: #6c757d; margin-top: 40px; padding: 20px; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔬 Environmental Data Pipeline Test Report</h1>
+        <p>Generated: 2025-11-08 13:26:58 on Dope-ass-mad-doggie-MBP by mudaphilly</p>
+    </div>
+    <img src="images/gorgeMonitoring.jpg" alt="Gorge Monitoring Banner" class="banner" onerror="this.style.display='none'">
+
+        <div class="summary">
+            <h2>Test Summary</h2>
+            <table>
+                <tr>
+                    <td><strong>Total Tests:</strong></td><td>8</td>
+                    <td><strong>Duration:</strong></td>
+                    <td>0.05s</td>
+                </tr>
+                <tr>
+                    <td><span class="pass">Passed:</span></td><td>7</td>
+                    <td><span class="fail">Failed:</span></td><td>0</td>
+                </tr>
+                <tr>
+                    <td><span class="warning">Warnings:</span></td><td>1</td>
+                    <td class="skip">Skipped:</td><td>0</td>
+                </tr>
+            </table>
+        </div>
+        <div class="test-section"><h2>Connectivity Tests</h2>
+                    <h3>Logger Portal Authentication - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Tests connectivity to the logger data portal and validates authentication </div><p>Portal authentication endpoint verified</p>
+                    <h3>Weather Website Accessibility - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Verifies weather website is accessible and returns valid HTTP response codes.</div><p>Successfully connected (Status: 200)</p></div><div class="test-section"><h2>Logger Availability Tests Tests</h2>
+                    <h3>Site Configuration - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Verifies site configuration from SITE_CONFIG_JSON environment variable, checking which sites are enabled vs disabled based on the 'enabled' flag.</div><p>Found 4 enabled sites, 3 disabled sites from SITE_CONFIG_JSON</p><h4>Enabled Sites (4):</h4><ul><li>✓ ERP3</li><li>✓ Ratty Springs</li><li>✓ SW18WR005</li><li>✓ SW18WR006</li></ul><h4>Disabled Sites (3):</h4><ul><li>✓ ERP4</li><li>✓ Palm Pool</li><li>✓ SW18WR002</li></ul></div><div class="test-section"><h2>Data Structure Tests</h2>
+                    <h3>Logger Data Structure - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Checks that downloaded logger CSV files contain required columns for Date, Time, and Level measurements.</div><p>Expected columns verified: Date, Time, Level(RAW)[Main Buffer] (ft)</p>
+                    <h3>Weather Data Structure - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Validates that scraped weather data contains the expected column structure, </div><p>Found 22 columns. Required pressure columns at positions 15 and 17.</p><h4>All Columns Found (Array Order):</h4><div class="column-list"><pre>[0]: Day
+[1]: Min Temp (°C)
+[2]: Max Temp (°C)
+[3]: Rain (mm)
+[4]: Evaporation (mm)
+[5]: Sunshine (hours)
+[6]: Wind Dir (9am)
+[7]: Wind Dir (3pm)
+[8]: Wind Spd (9am)
+[9]: Wind Spd (3pm)
+[10]: Humidity (9am)
+[11]: Humidity (3pm)
+[12]: Cloud (9am)
+[13]: Cloud (3pm)
+[14]: Temp (9am)
+[15]: MSL Pressure (9am)
+[16]: Temp (3pm)
+[17]: MSL Pressure (3pm)
+[18]: Wind Gust Dir
+[19]: Wind Gust Spd
+[20]: Wind Gust Time
+[21]: Temp (Max)
+</pre></div><p><strong>Required columns verified at positions:</strong></p><ul><li>MSL Pressure (9am) [hPa]: Position 15</li><li>MSL Pressure (3pm) [hPa]: Position 17</li></ul></div><div class="test-section"><h2>Data Quality Tests</h2>
+                    <h3>Statistical Anomaly Detection - <span class="warning">WARNING</span></h3>
+                    <div class="test-description">Analyses validated data for statistical anomalies, flagging depth changes >15% and pressure changes >2% for review.</div><p>Found 8 depth anomalies (>15%), 0 pressure anomalies (>2%)</p><h4>Depth Anomalies Detected:</h4><div class="anomaly"><p>Maximum change: 200.0%</p><table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr><tr>
+                        <td>SW18WR006</td>
+                        <td>05/11/2025 6:00:00 AM</td>
+                        <td>0.1</td>
+                        <td>200.0%</td>
+                    </tr><tr>
+                        <td>SW18WR005</td>
+                        <td>07/11/2025 6:00:00 AM</td>
+                        <td>0.0</td>
+                        <td>-100.0%</td>
+                    </tr><tr>
+                        <td>SW18WR006</td>
+                        <td>04/11/2025 12:00:00 AM</td>
+                        <td>0.0</td>
+                        <td>-97.0%</td>
+                    </tr><tr>
+                        <td>SW18WR006</td>
+                        <td>06/11/2025 12:00:00 AM</td>
+                        <td>0.1</td>
+                        <td>66.7%</td>
+                    </tr><tr>
+                        <td>SW18WR006</td>
+                        <td>03/11/2025 12:00:00 AM</td>
+                        <td>0.7</td>
+                        <td>-52.1%</td>
+                    </tr><tr>
+                        <td>ERP3</td>
+                        <td>04/11/2025 12:00:00 AM</td>
+                        <td>0.0</td>
+                        <td>-25.0%</td>
+                    </tr><tr>
+                        <td>ERP3</td>
+                        <td>03/11/2025 12:00:00 AM</td>
+                        <td>0.0</td>
+                        <td>-20.0%</td>
+                    </tr><tr>
+                        <td>ERP3</td>
+                        <td>02/11/2025 12:00:00 AM</td>
+                        <td>0.0</td>
+                        <td>-16.7%</td>
+                    </tr></table></div></div><div class="test-section"><h2>Calculations Tests</h2>
+                    <h3>Depth Calculation Verification - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Tests barometric pressure adjustment formula using downloaded files and cross-checks results against final validated csv. Applies thresholds: depth > 0.3m and baro difference > 5 hPa to prevent corrections from very shallow/dry pools and sensor noise.</div><p>Tested 3 calculations using dataValidation.py formula with thresholds: depth > 0.3m, baro diff > 5.0 hPa. Formula: adjusted = raw + (CONVERSION_FACTOR * delta_p_psi / SG)</p><h4>Calculation Results:</h4><table class="calculation-table"><tr><th>Test</th><th>Site</th><th>Date</th><th>Depth Raw (m)</th><th>BOM Baro</th><th>Logger Baro</th><th>Adjustment</th><th>Calculated</th><th>Expected</th><th>Diff</th><th>Result</th></tr><tr>
+                    <td>1</td>
+                    <td>ERP3</td>
+                    <td>01/11/2025 12:00:00 AM</td>
+                    <td>0.06</td>
+                    <td>1012.3</td>
+                    <td>125.0</td>
+                    <td>No</td>
+                    <td>0.06</td>
+                    <td>0.06</td>
+                    <td>0.0</td>
+                    <td><span class="pass">✓</span></td>
+                </tr><tr>
+                    <td>2</td>
+                    <td>SW18WR006</td>
+                    <td>05/11/2025 6:00:00 AM</td>
+                    <td>0.06</td>
+                    <td>1007.8</td>
+                    <td>967.9</td>
+                    <td>No</td>
+                    <td>0.06</td>
+                    <td>0.06</td>
+                    <td>0.0</td>
+                    <td><span class="pass">✓</span></td>
+                </tr><tr>
+                    <td>3</td>
+                    <td>SW18WR006</td>
+                    <td>03/11/2025 12:00:00 AM</td>
+                    <td>1.09</td>
+                    <td>1010.7</td>
+                    <td>969.6</td>
+                    <td>Yes</td>
+                    <td>0.67</td>
+                    <td>0.67</td>
+                    <td>0.0</td>
+                    <td><span class="pass">✓</span></td>
+                </tr></table>
+                    <h3>PSI to hPa Conversion - <span class="pass">PASS</span></h3>
+                    <div class="test-description">Validates PSI to hPa conversion accuracy (factor: 68.9476) by comparing calculated values against validated output data from any PSI-based logger sites.</div><p>Tested 3 PSI to hPa conversions using factor: 68.9476</p><h4>PSI to hPa Conversion Results:</h4><table class="calculation-table"><tr><th>Test</th><th>Site</th><th>Date</th><th>PSI</th><th>Calculated hPa</th><th>Expected hPa</th><th>Difference</th><th>Factor</th><th>Result</th></tr><tr>
+                    <td>1</td>
+                    <td>ERP3</td>
+                    <td>04/11/2025 12:00:00 AM</td>
+                    <td>1.079</td>
+                    <td>74.39</td>
+                    <td>74.39</td>
+                    <td>0.0</td>
+                    <td>68.9476</td>
+                    <td><span class="pass">✓</span></td>
+                </tr><tr>
+                    <td>2</td>
+                    <td>ERP3</td>
+                    <td>23/10/2025 12:00:00 AM</td>
+                    <td>2.438</td>
+                    <td>168.09</td>
+                    <td>168.09</td>
+                    <td>0.0</td>
+                    <td>68.9476</td>
+                    <td><span class="pass">✓</span></td>
+                </tr><tr>
+                    <td>3</td>
+                    <td>ERP3</td>
+                    <td>31/10/2025 12:00:00 AM</td>
+                    <td>1.913</td>
+                    <td>131.9</td>
+                    <td>131.9</td>
+                    <td>0.0</td>
+                    <td>68.9476</td>
+                    <td><span class="pass">✓</span></td>
+                </tr></table></div>
+    <div class="footer">
+        <p>End of Test Report - AquaTroll Environmental Data Pipeline</p>
+    </div>
+</body>
+</html>

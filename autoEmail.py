@@ -94,7 +94,17 @@ def parse_email_list(email_string):
     return [email.strip() for email in email_string.split(',') if email.strip()]
 
 # ------- Email to environment team (for EMS)
-def send_validated_data_email(attachment_path):
+def send_validated_data_email(csv_path, html_report_path=None):
+    """
+    Send validated depth data email with CSV and HTML A/B tests.
+    
+    Args:
+        csv_path (str): Path to CSV data file (required)
+        html_report_path (str): Optional path to HTML test report (abTestsReport.html)
+    
+    Returns:
+        list or bool: List of recipients if successful, False otherwise
+    """
     recipient_string = os.getenv('RECIPIENT_DEPTH_DATA')
     recipients = parse_email_list(recipient_string)
     
@@ -104,9 +114,79 @@ def send_validated_data_email(attachment_path):
     
     subject = os.getenv('DEPTH_DATA_EMAIL_SUBJECT', "Paraburdoo EMP Pools Logger Data Report")
     body_template = os.getenv('DEPTH_DATA_EMAIL_BODY', "Please find attached validated depth data for {month}:\n {filename}")
-    body = body_template.format(month=current_month, filename=os.path.basename(attachment_path))
+    body = body_template.format(month=current_month, filename=os.path.basename(csv_path))
     
-    return send_email_with_attachment(recipients, subject, body, attachment_path)
+    # Attach A/B tests (if present)
+    if html_report_path and os.path.exists(html_report_path):
+        body += f"\n\nAB Test Report: {os.path.basename(html_report_path)}"
+        
+        # Attach both files (loads from env)
+        sender_email = os.getenv('EMAIL_SENDER_ADDRESS')
+        sender_password = os.getenv('EMAIL_SENDER_PASSWORD')
+        smtp_server = os.getenv('EMAIL_SMTP_SERVER')
+        smtp_port_str = os.getenv('EMAIL_SMTP_PORT')
+        
+        if not all([sender_email, sender_password, smtp_server, smtp_port_str]):
+            log.error("Email configuration missing in .env file. Cannot send email.")
+            return False
+        
+        try:
+            smtp_port = int(smtp_port_str)
+        except ValueError:
+            log.error(f"Invalid EMAIL_SMTP_PORT: {smtp_port_str}. Must be an integer.")
+            return False
+        
+        if not os.path.exists(csv_path):
+            log.error(f"CSV file not found: {csv_path}. Cannot send email.")
+            return False
+        
+        # Create email
+        message = MIMEMultipart()
+        message['From'] = sender_email
+        message['To'] = ", ".join(recipients)
+        message['Subject'] = subject
+        message.attach(MIMEText(body, 'plain'))
+        
+        # Attach CSV
+        try:
+            with open(csv_path, "rb") as attachment:
+                part = MIMEApplication(attachment.read(), Name=os.path.basename(csv_path))
+            part['Content-Disposition'] = f'attachment; filename="{os.path.basename(csv_path)}"'
+            message.attach(part)
+            log.debug(f"Successfully attached file: {os.path.basename(csv_path)}")
+        except Exception as e:
+            log.error(f"Error attaching file {csv_path}: {e}")
+            return False
+        
+        # Attach A/B report
+        try:
+            with open(html_report_path, "rb") as attachment:
+                part = MIMEApplication(attachment.read(), Name=os.path.basename(html_report_path))
+            part['Content-Disposition'] = f'attachment; filename="{os.path.basename(html_report_path)}"'
+            message.attach(part)
+            log.debug(f"Successfully attached file: {os.path.basename(html_report_path)}")
+        except Exception as e:
+            log.error(f"Error attaching file {html_report_path}: {e}")
+            # Will catch if a/b test is missing
+        
+        # Send email
+        context = ssl.create_default_context()
+        try:
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+            server.starttls(context=context)
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipients, message.as_string())
+            return recipients
+        except Exception as e:
+            log.error(f"Email error: {e}")
+            return False
+        finally:
+            if 'server' in locals() and server:
+                server.quit()
+    
+    # If no A/B tests, bosh on with just the CSV
+    else:
+        return send_email_with_attachment(recipients, subject, body, csv_path)
 
 # ------- Auto-upload to environmental database
 def send_pbo_pools_email(attachment_path):
