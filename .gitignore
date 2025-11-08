@@ -23,3 +23,6 @@ script.log
 # Data directories
 data_downloads/
 transformed_data/
+
+# A/B report
+abTestsReport.html
