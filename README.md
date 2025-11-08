@@ -54,4 +54,4 @@ To maintain data integrity, the project includes A/B tests implemented in `tests
 - Site Availability
 - Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
 
-The tests generate an HTML report (`abTestsReport.html`) summarizing results. It is recommended to run these tests monthly to help identify anomalies early. You can schedule this via cron similar to the main pipeline.
+The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in theb transformed_data folder.
