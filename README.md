@@ -3,7 +3,9 @@
 
 ## Project Overview
 The industry standard for collecting surface pool depth readings largely relies on pressure-based logger data, which requires regular calibration to remain accurate. In areas with challenging terrain and anthropological sensitivities, infrequent site access leads to unreliable data and delayed identification of issues. This situation makes it impossible to reliably deliver the best possible environmental outcomes.
-Off-the-shelf telemetry systems were either too bulky, too power-hungry, or lacked the connectivity required to operate in steep gorges of the project environment. To overcome this, [Maxy Engineering](https://maxyengineering.com.au/) developed a highly portable, power-independent logging system capable of transmitting data via 4G/5G or the Iridium satellite network—eliminating the need for regular site visits.
+
+Off-the-shelf telemetry systems were either too bulky, too power-hungry, or lacked the connectivity required to operate in steep gorges of the project environment. To overcome this, [Maxy Engineering](https://maxyengineering.com.au/) developed a highly portable, power-independent logging system capable of transmitting data via 4G/5G or the Iridium satellite network which eliminates the need for regular site visits.
+
 This project links Maxy’s hardware with a software system that automates key processes: fetching raw data, performing daily pressure calibrations using external weather data, and distributing validated results. The calibrated data enables timely review of anomalies and corrective actions. Results are emailed to the site environmental team and formatted for upload into the company’s environmental data storage system. The full pipeline runs autonomously on a Raspberry Pi, providing reliable, continuous monitoring with no manual data handling.
 
 ## Hardware Components
@@ -44,7 +46,7 @@ In the data validation process, thresholds have been applied to ensure accurate 
 - Minimum depth threshold: 0.3 meters (prevents corrections in very shallow or dry pools).
 - Minimum barometric difference threshold: 5 hPa (avoids adjustments due to sensor noise).
 
-Users should verify local variations between observed logger values and the weather station data during deployment. If significant discrepancies are noted (e.g., individual instrument, elevation differences or microclimates), consider modifying these thresholds in `dataValidation.py` and `testsAB.py` to better suit your specific environment.
+Users should verify if there are any local variations between observed logger values and weather station data post deployment. If significant discrepancies are noted (e.g., individual instruments, elevation differences or microclimates), consider modifying these thresholds in `dataValidation.py` and `testsAB.py` to better suit your specific environment. The goal is to align the deployed, field calibrated AquaTroll with the observed weather station hPa value.
 
 ## Quality Assurance and Testing
 To maintain data integrity, the project includes A/B tests implemented in `testsAB.py`. These tests validate:
@@ -54,4 +56,4 @@ To maintain data integrity, the project includes A/B tests implemented in `tests
 - Site Availability
 - Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
 
-The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in theb transformed_data folder.
+The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in the transformed_data folder.
