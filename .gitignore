@@ -26,3 +26,4 @@ transformed_data/
 
 # A/B report
 abTestsReport.html
+diagnoseBom.py

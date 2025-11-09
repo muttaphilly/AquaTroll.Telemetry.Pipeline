@@ -10,7 +10,7 @@ Monthly verification of script performance through testing of:
 - Flagging of any statistical anomalies
 
 Author: Philip Curry
-Last Modified: 09-11-2025
+Last Modified: 10-11-2025
 """
 
 # ============================================================================
@@ -335,38 +335,77 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     def test_weather_website_accessibility(self):
         """Verify weather website is accessible."""
-        with patch('requests.get') as mock_get:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.text = "<html><table class='data'></table></html>"
-            mock_get.return_value = mock_response
+        if not self.weather_url:
+            self.record_result(
+                "Weather Website Accessibility",
+                "Connectivity",
+                "FAIL",
+                "WEATHER_URL not configured in environment"
+            )
+            self.fail("WEATHER_URL not configured")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        try:
+            start_time = datetime.now()
+            response = requests.get(self.weather_url, headers=headers, timeout=10)
+            response_time = (datetime.now() - start_time).total_seconds()
             
-            try:
-                response = requests.get(self.weather_url, timeout=10)
-                if response.status_code == 200:
+            # Parse response to verify table structure exists
+            soup = BeautifulSoup(response.text, 'html.parser')
+            table = soup.select_one('table.data')
+            
+            if response.status_code == 200:
+                if table:
                     self.record_result(
                         "Weather Website Accessibility",
                         "Connectivity",
                         "PASS",
-                        f"Successfully connected (Status: {response.status_code})"
+                        f"Successfully connected (Status: {response.status_code}, Response time: {response_time:.2f}s, Table found: YES)"
                     )
                     self.assertTrue(True)
                 else:
                     self.record_result(
                         "Weather Website Accessibility",
                         "Connectivity",
-                        "FAIL",
-                        f"Connection failed (Status: {response.status_code})"
+                        "WARNING",
+                        f"Connected but table.data not found (Status: {response.status_code})"
                     )
-                    self.fail(f"Weather site returned status {response.status_code}")
-            except Exception as e:
+                    self.assertTrue(True)
+            else:
                 self.record_result(
                     "Weather Website Accessibility",
                     "Connectivity",
                     "FAIL",
-                    f"Connection error: {str(e)}"
+                    f"Connection failed (Status: {response.status_code})"
                 )
-                self.fail(f"Could not connect to weather site: {e}")
+                self.fail(f"Weather site returned status {response.status_code}")
+        except requests.exceptions.Timeout:
+            self.record_result(
+                "Weather Website Accessibility",
+                "Connectivity",
+                "FAIL",
+                "Connection timeout after 10 seconds"
+            )
+            self.fail("Connection timeout")
+        except requests.exceptions.RequestException as e:
+            self.record_result(
+                "Weather Website Accessibility",
+                "Connectivity",
+                "FAIL",
+                f"Connection error: {str(e)}"
+            )
+            self.fail(f"Could not connect to weather site: {e}")
+        except Exception as e:
+            self.record_result(
+                "Weather Website Accessibility",
+                "Connectivity",
+                "FAIL",
+                f"Unexpected error: {str(e)}"
+            )
+            self.fail(f"Unexpected error: {e}")
     
     def test_logger_portal_authentication(self):
         """Verify logger portal authentication endpoint is accessible."""
@@ -399,108 +438,224 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     def test_weather_data_structure(self):
         """Validate weather data contains expected column structure."""
-        mock_html = """
-        <html>
-        <table class="data">
-            <thead>
-                <tr>
-                    <th>Day</th>
-                    <th>Min Temp (°C)</th>
-                    <th>Max Temp (°C)</th>
-                    <th>Rain (mm)</th>
-                    <th>Evaporation (mm)</th>
-                    <th>Sunshine (hours)</th>
-                    <th>Wind Dir (9am)</th>
-                    <th>Wind Dir (3pm)</th>
-                    <th>Wind Spd (9am)</th>
-                    <th>Wind Spd (3pm)</th>
-                    <th>Humidity (9am)</th>
-                    <th>Humidity (3pm)</th>
-                    <th>Cloud (9am)</th>
-                    <th>Cloud (3pm)</th>
-                    <th>Temp (9am)</th>
-                    <th>MSL Pressure (9am)</th>
-                    <th>Temp (3pm)</th>
-                    <th>MSL Pressure (3pm)</th>
-                    <th>Wind Gust Dir</th>
-                    <th>Wind Gust Spd</th>
-                    <th>Wind Gust Time</th>
-                    <th>Temp (Max)</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <th>1</th><td>22.5</td><td>35.2</td><td>0</td><td>8.2</td><td>11.5</td>
-                    <td>NE</td><td>NW</td><td>15</td><td>20</td><td>45</td>
-                    <td>22</td><td>2</td><td>4</td><td>28.5</td><td>1013.2</td>
-                    <td>33.5</td><td>1013.5</td><td>W</td><td>35</td><td>14:32</td>
-                    <td>35.2</td>
-                </tr>
-            </tbody>
-        </table>
-        </html>
-        """
+        if not self.weather_url:
+            self.record_result(
+                "Weather Data Structure",
+                "Data Structure",
+                "SKIP",
+                "WEATHER_URL not configured - skipping test"
+            )
+            self.skipTest("WEATHER_URL not configured")
+            return
         
-        with patch('requests.get') as mock_get:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.text = mock_html
-            mock_get.return_value = mock_response
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Required positions matching weatherStation.py scraping logic
+        required_positions = {
+            'MSL Pressure (9am) [hPa]': 15,  # Morning hPa (hpa_am_index)
+            'MSL Pressure (3pm) [hPa]': 21   # Afternoon hPa (hpa_pm_index)
+        }
+        
+        try:
+            response = requests.get(self.weather_url, headers=headers, timeout=10)
             
-            soup = BeautifulSoup(mock_html, 'html.parser')
+            if response.status_code != 200:
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "FAIL",
+                    f"Could not retrieve webpage (Status: {response.status_code})",
+                    {
+                        'all_columns': [],
+                        'required_columns': required_positions,
+                        'issues': [f"HTTP {response.status_code}"]
+                    }
+                )
+                self.fail(f"Weather site returned status {response.status_code}")
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
             table = soup.select_one('table.data')
             
-            if table:
-                header_row = table.select_one('thead tr')
-                if header_row:
-                    headers = [th.get_text(strip=True) for th in header_row.select('th')]
-                else:
-                    # Fallback headers
-                    headers = [f"Column_{i}" for i in range(22)]
-                    headers[0] = "Day"
-                    headers[15] = "MSL Pressure (9am)"
-                    headers[17] = "MSL Pressure (3pm)"
-                
-                # Required positions
-                required_positions = {
-                    'MSL Pressure (9am) [hPa]': 15,
-                    'MSL Pressure (3pm) [hPa]': 17
-                }
-                
-                # Verify pressure columns at correct positions
-                test_passed = (
-                    len(headers) > 15 and 'Pressure' in headers[15] and
-                    len(headers) > 17 and 'Pressure' in headers[17]
+            if not table:
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "FAIL",
+                    "Table with class 'data' not found in HTML",
+                    {
+                        'all_columns': [],
+                        'required_columns': required_positions,
+                        'issues': ["Table not found"]
+                    }
                 )
-                
-                if test_passed:
-                    self.record_result(
-                        "Weather Data Structure",
-                        "Data Structure",
-                        "PASS",
-                        f"Found {len(headers)} columns. Required pressure columns at positions 15 and 17.",
-                        {
-                            'all_columns': headers,
-                            'required_columns': required_positions
-                        }
-                    )
-                else:
-                    missing = []
-                    if not (len(headers) > 15 and 'Pressure' in headers[15]):
-                        missing.append("Pressure data at position 15")
-                    if not (len(headers) > 17 and 'Pressure' in headers[17]):
-                        missing.append("Pressure data at position 17")
-                    
-                    self.record_result(
-                        "Weather Data Structure",
-                        "Data Structure",
-                        "FAIL",
-                        f"Missing required columns: {', '.join(missing)}"
-                    )
-                
-                self.assertTrue(test_passed)
-            else:
                 self.fail("Could not parse weather table structure")
+            
+            # Weather site uses colspan/rowspan for group headers
+            # Can't parse thead, analyse actual data row structure
+            
+            data_rows = table.select('tbody tr')
+            first_valid_row = None
+            headers_list = []
+            
+            # Find first valid data row (skip summary rows)
+            for row in data_rows:
+                cells = row.select('th, td')
+                if cells and len(cells) > 1:
+                    date_cell = cells[0].get_text(strip=True)
+                    if date_cell.isdigit():  # Valid day number
+                        first_valid_row = cells
+                        break
+            
+            if not first_valid_row:
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "FAIL",
+                    "Could not find valid data row in table",
+                    {
+                        'all_columns': [],
+                        'required_columns': required_positions,
+                        'issues': ["No valid data rows found"]
+                    }
+                )
+                self.fail("Could not find valid data row in table")
+            
+            # Build column descriptions based on returned data structure
+            total_columns = len(first_valid_row)
+            
+            # Headers for display in report
+            # which match the weather sites structure
+            column_descriptions = [
+                'Date (Day)',
+                'Day of Week',
+                'Min Temp (°C)',
+                'Max Temp (°C)',
+                'Rain (mm)',
+                'Evaporation (mm)',
+                'Sunshine (hours)',
+                'Max Gust Direction',
+                'Max Gust Speed (km/h)',
+                'Max Gust Time',
+                'Temp 9am (°C)',
+                'Relative Humidity 9am (%)',
+                'Cloud 9am (oktas)',
+                'Wind Direction 9am',
+                'Wind Speed 9am (km/h)',
+                'MSL Pressure 9am (hPa)',  # Position 15
+                'Temp 3pm (°C)',
+                'Relative Humidity 3pm (%)',
+                'Cloud 3pm (oktas)',
+                'Wind Direction 3pm',
+                'Wind Speed 3pm (km/h)',
+                'MSL Pressure 3pm (hPa)'   # Position 21
+            ]
+            
+            # Use actual column count, but provide descriptions for display
+            if total_columns <= len(column_descriptions):
+                headers_list = column_descriptions[:total_columns]
+            else:
+                # More columns than expected, add generic names
+                headers_list = column_descriptions + [f'Column_{i}' for i in range(len(column_descriptions), total_columns)]
+            
+            # Verify positions 15 and 21 exist and contain pressure data
+            position_15_ok = False
+            position_21_ok = False
+            
+            if total_columns > 15:
+                # Extract value at position 15 from first valid row
+                val_15 = first_valid_row[15].get_text(strip=True)
+                try:
+                    # Check numeric value in reasonable hPa range (950-1050)
+                    float_val = float(val_15)
+                    position_15_ok = 950 <= float_val <= 1050
+                except (ValueError, TypeError):
+                    position_15_ok = False
+            
+            if total_columns > 21:
+                # Extract value at position 21 from first valid row
+                val_21 = first_valid_row[21].get_text(strip=True)
+                try:
+                    # Check numeric value 
+                    float_val = float(val_21)
+                    position_21_ok = 950 <= float_val <= 1050
+                except (ValueError, TypeError):
+                    position_21_ok = False
+            
+            test_passed = position_15_ok and position_21_ok
+            
+            if test_passed:
+                # Show sample values to user
+                sample_val_15 = first_valid_row[15].get_text(strip=True)
+                sample_val_21 = first_valid_row[21].get_text(strip=True)
+                
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "PASS",
+                    f"Found {total_columns} columns. Required pressure columns at positions 15 and 21. Sample values: [15]='{sample_val_15}' hPa, [21]='{sample_val_21}' hPa",
+                    {
+                        'all_columns': headers_list,
+                        'required_columns': required_positions
+                    }
+                )
+            else:
+                missing = []
+                if not position_15_ok:
+                    if total_columns > 15:
+                        val = first_valid_row[15].get_text(strip=True)
+                        missing.append(f"Pressure data at position 15 (found: '{val}', not valid hPa)")
+                    else:
+                        missing.append(f"Position 15 does not exist (only {total_columns} columns)")
+                
+                if not position_21_ok:
+                    if total_columns > 21:
+                        val = first_valid_row[21].get_text(strip=True)
+                        missing.append(f"Pressure data at position 21 (found: '{val}', not valid hPa)")
+                    else:
+                        missing.append(f"Position 21 does not exist (only {total_columns} columns)")
+                
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "FAIL",
+                    f"Missing required columns: {', '.join(missing)}",
+                    {
+                        'all_columns': headers_list,
+                        'required_columns': required_positions,
+                        'issues': missing
+                    }
+                )
+            
+            self.assertTrue(test_passed, f"Weather table structure validation failed: {missing if not test_passed else ''}")
+            
+        except requests.exceptions.RequestException as e:
+            self.record_result(
+                "Weather Data Structure",
+                "Data Structure",
+                "FAIL",
+                f"Connection error: {str(e)}",
+                {
+                    'all_columns': [],
+                    'required_columns': required_positions,
+                    'issues': [str(e)]
+                }
+            )
+            self.fail(f"Could not connect to weather site: {e}")
+        except Exception as e:
+            self.record_result(
+                "Weather Data Structure",
+                "Data Structure",
+                "FAIL",
+                f"Parsing error: {str(e)}",
+                {
+                    'all_columns': [],
+                    'required_columns': required_positions,
+                    'issues': [str(e)]
+                }
+            )
+            self.fail(f"Could not parse weather table structure: {e}")
     
     def test_logger_data_structure(self):
         """Verify logger CSV files have required column structure."""
@@ -588,7 +743,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if len(enabled_sites) == 0:
                 self.record_result(
                     "Site Configuration",
-                    "Logger Availability Tests",
+                    "Logger Availability",
                     "FAIL",
                     "No enabled sites found in SITES_CONFIG",
                     config_data
@@ -597,7 +752,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             else:
                 self.record_result(
                     "Site Configuration",
-                    "Logger Availability Tests",
+                    "Logger Availability",
                     "PASS",
                     f"Found {len(enabled_sites)} enabled sites, {len(disabled_sites)} disabled sites from SITES_CONFIG",
                     config_data
@@ -607,7 +762,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except Exception as e:
             self.record_result(
                 "Site Configuration",
-                "Logger Availability Tests",
+                "Logger Availability",
                 "FAIL",
                 f"Configuration error: {str(e)}"
             )
@@ -957,7 +1112,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 }
             )
             
-            self.assertTrue(True)  # Anomalies are warnings, not failures
+            self.assertTrue(True)  # Anomalies are warnings brosif, not failures
             
         except Exception as e:
             self.record_result(
@@ -1031,7 +1186,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         # Set category order
         category_order = [
             'Connectivity',
-            'Logger Availability Tests',
+            'Logger Availability',
             'Data Structure',
             'Data Quality',
             'Calculations'
@@ -1065,6 +1220,11 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         # Add footer
         html += HTML_FOOTER
         
+        # Ensure output directory exists
+        output_dir = os.path.dirname(cls.report_filename)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
         # Save report
         with open(cls.report_filename, 'w', encoding='utf-8') as f:
             f.write(html)
@@ -1091,16 +1251,26 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         data = test['data']
         
         if test_name == 'Weather Data Structure':
-            html += '<h4>All Columns Found (Array Order):</h4>'
-            html += '<div class="column-list"><pre>'
-            for i, col in enumerate(data['all_columns']):
-                html += f"[{i}]: {col}\n"
-            html += '</pre></div>'
-            html += '<p><strong>Required columns verified at positions:</strong></p>'
-            html += '<ul>'
-            for col, pos in data['required_columns'].items():
-                html += f'<li>{col}: Position {pos}</li>'
-            html += '</ul>'
+            if data and 'all_columns' in data:
+                html += '<h4>All Columns Found (Array Order):</h4>'
+                html += '<div class="column-list"><pre>'
+                for i, col in enumerate(data['all_columns']):
+                    html += f"[{i}]: {col}\n"
+                html += '</pre></div>'
+                
+                if 'required_columns' in data:
+                    html += '<p><strong>Required columns verified at positions:</strong></p>'
+                    html += '<ul>'
+                    for col, pos in data['required_columns'].items():
+                        html += f'<li>{col}: Position {pos}</li>'
+                    html += '</ul>'
+                
+                if 'issues' in data and data['issues']:
+                    html += '<h4>Issues Found:</h4>'
+                    html += '<ul>'
+                    for issue in data['issues']:
+                        html += f'<li>{issue}</li>'
+                    html += '</ul>'
         
         elif test_name == 'Site Configuration':
             if data.get('enabled'):
@@ -1205,17 +1375,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         
         return html
 
-
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
-def run_tests(output_path='abTestsReport.html'):
+def run_tests(output_path='transformed_data/abTestsReport.html'):
     """
-    Execute all tests and generate report.
+    Execute tests, generate html report.
     
     Args:
-        output_path (str): Path where the HTML report should be saved. Defaults to 'abTestsReport.html'.
+        output_path (str): Path where the HTML report should be saved. Defaults to 'transformed_data/abTestsReport.html'.
     
     Returns:
         bool: True if all tests passed, False otherwise
