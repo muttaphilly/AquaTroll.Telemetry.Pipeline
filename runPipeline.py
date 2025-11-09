@@ -49,7 +49,7 @@ if __name__ == "__main__":
     else:
         print("Failed to send verification data to enviro team (output_file not found)")
                 
-    # Database email (no changes needed)
+    # Database email
     if os.path.exists(pbo_pools_file):
         recipients = autoEmail.send_pbo_pools_email(pbo_pools_file)
         if recipients:

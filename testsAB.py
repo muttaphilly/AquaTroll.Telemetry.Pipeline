@@ -2,15 +2,15 @@
 AquaTroll Depth Data Pipeline
 A/B tests for the data scraping, validation & processing pipeline.
 
-This is a verification of monthly results through testing of:
+Monthly verification of script performance through testing of:
 - Data connectivity and authentication
-- Data structure validation
-- Depth calculation verifications
+- Validation or returned data structures
+- Verification of depth calculations
 - Site availability checks
-- Flagging of statistical anomalies
+- Flagging of any statistical anomalies
 
 Author: Philip Curry
-Last Modified: 08-11-2025
+Last Modified: 09-11-2025
 """
 
 # ============================================================================
@@ -47,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # GLOBAL CONFIGURATION
 # ============================================================================
 
-# System information for report generation
+# ID the system and user running the script
 COMPUTER_NAME = gethostname()
 USERNAME = getuser()
 
@@ -75,8 +75,8 @@ TEST_DESCRIPTIONS = {
         "checking which sites are enabled vs disabled based on the 'enabled' flag."
     ),
     "Depth Calculation Verification": (
-        "Tests barometric pressure adjustment formula using downloaded files "
-        "and cross-checks results against final validated csv. "
+        "Indpendently tests barometric pressure adjustments using downloaded files "
+        "then cross-checks results against the pipelines final validated csv results. "
         "Applies thresholds: depth > 0.3m and baro difference > 5 hPa to prevent "
         "corrections from very shallow/dry pools and sensor noise."
     ),
@@ -169,7 +169,6 @@ class CalculationConstants:
     def specific_gravity(cls):
         """Calculate specific gravity for fresh water."""
         return cls.WATER_DENSITY / cls.REFERENCE_DENSITY
-
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -273,22 +272,13 @@ def calculate_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
     
     return round(adjusted_depth, 2), True
 
-
 # ============================================================================
 # MAIN TEST CLASS
 # ============================================================================
 
 class TestEnvironmentalPipeline(unittest.TestCase):
     """
-    Comprehensive test suite for aquatroll data pipeline.
-    
-    Tests cover:
-    - Connectivity to external services
-    - Data structure validation  
-    - Calculation accuracy
-    - Configuration validation
-    - Data quality checks
-    - End-to-end integration
+    Suite for aquatroll data pipeline. Described in TEST_DESCRIPTIONS
     """
     
     @classmethod
@@ -629,7 +619,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     def test_depth_calculation_verification(self):
         """
-        Verify depth calculation accuracy using real data.
+        Verify depth calculation accuracy using scraped data.
         
         Tests dataValidation.py formula:
         - Site-specific depth conversions
@@ -990,17 +980,11 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     @classmethod
     def generate_html_report(cls):
         """
-        Generate comprehensive HTML test report.
-        
-        Creates detailed report with:
-        - Summary statistics
-        - Test results by category
-        - Data tables for calculations
-        - Anomaly detection results
+        Generate the HTML a/b test report.
         """
         timestamp = cls.test_start_time.strftime("%d/%m/%Y %H:%M:%S")
         
-        # Calculate summary statistics
+        # Calculate summary stats
         total_tests = len(cls.results)
         passed = sum(1 for r in cls.results if r['status'] == 'PASS')
         failed = sum(1 for r in cls.results if r['status'] == 'FAIL')
@@ -1044,7 +1028,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 categories[cat] = []
             categories[cat].append(result)
         
-        # Define desired category order
+        # Set category order
         category_order = [
             'Connectivity',
             'Logger Availability Tests',
@@ -1053,7 +1037,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             'Calculations'
         ]
         
-        # Generate sections for each category in desired order
+        # Generate sections for each category in set order
         for category in category_order:
             if category in categories:
                 tests = categories[category]
