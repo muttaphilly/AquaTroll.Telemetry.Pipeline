@@ -71,7 +71,7 @@ TEST_DESCRIPTIONS = {
         "Date, Time, and Level measurements."
     ),
     "Site Configuration": (
-        "Verifies site availability from SITE_CONFIG_JSON env variable, "
+        "Verifies site availability from SITES_CONFIG env variable, "
         "checking which sites are enabled vs disabled based on the 'enabled' flag."
     ),
     "Depth Calculation Verification": (
@@ -297,9 +297,9 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         # Load configurations from env
         cls.weather_url = os.getenv("WEATHER_URL", "")
         cls.login_url = os.getenv("LOGIN_URL", "")
-        cls.sites_json = json.loads(os.getenv("SITES_JSON", "[]"))
-        cls.enabled_sites = os.getenv("ENABLED_SITES", "").split(",")
-        cls.site_config = json.loads(os.getenv("SITE_CONFIG_JSON", "{}"))
+        
+        # Load logger sites
+        cls.site_config = json.loads(os.getenv("SITES_CONFIG", "{}"))
         
         # Define data paths
         cls.data_downloads_path = 'data_downloads'
@@ -566,14 +566,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # ========================================================================
     
     def test_site_configuration(self):
-        """Validate site configuration from SITE_CONFIG_JSON."""
+        """Validate site configuration from SITES_CONFIG."""
         try:
             enabled_sites = []
             disabled_sites = []
             
-            # Parse enabled flag from SITE_CONFIG_JSON
+            # Parse enabled flag from SITES_CONFIG
             for site_name, config in self.site_config.items():
-                is_enabled = config.get('enabled', True)
+                is_enabled = config.get('enabled', False)
                 if is_enabled:
                     enabled_sites.append(site_name)
                 else:
@@ -590,7 +590,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Site Configuration",
                     "Logger Availability Tests",
                     "FAIL",
-                    "No enabled sites found in SITE_CONFIG_JSON",
+                    "No enabled sites found in SITES_CONFIG",
                     config_data
                 )
                 self.fail("No enabled sites configured")
@@ -599,7 +599,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Site Configuration",
                     "Logger Availability Tests",
                     "PASS",
-                    f"Found {len(enabled_sites)} enabled sites, {len(disabled_sites)} disabled sites from SITE_CONFIG_JSON",
+                    f"Found {len(enabled_sites)} enabled sites, {len(disabled_sites)} disabled sites from SITES_CONFIG",
                     config_data
                 )
                 self.assertTrue(True)

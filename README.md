@@ -37,7 +37,7 @@ The main script, `runPipeline.py`, orchestrates the following steps:
 * Retrieves external barometric data (by calling `weatherStation.py`).
 * Merges external weather data with the logger data based on date.
 * Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
-* Consolidates processed data into final output CSV files (`validatedDepthData.csv` and `SWLVLGenericTemplate_greaterPBOPools.csv`) saved in `transformed_data/`.
+* Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & abTests.html) saved in `transformed_data/`.
 4. **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients.
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
 
@@ -57,3 +57,71 @@ To maintain data integrity, the project includes A/B tests implemented in `tests
 - Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
 
 The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in the transformed_data folder.
+
+## Configuration
+  ### Required Environment Variables
+    LOGIN_URL="https://your-portal-url.com/login"
+    LOGIN_USERNAME="your_username"
+    LOGIN_PASSWORD="your_password"
+    PAUSE_SECONDS=20  # Delay between site scrapes (seconds)
+    WEATHER_URL="http://www.independentWeatherStation//your-station-id.shtml"
+    RECIPIENT_VALIDATION="team@company.com,supervisor@company.com"
+    RECIPIENT_DATABASE="database-upload@company.com"
+    VALIDATION_EMAIL_SUBJECT="Logger Validation Report"
+    DATABASE_EMAIL_SUBJECT="{month} Depth Data"
+    DATABASE_EMAIL_BODY="For Upload To Database: {filename}"
+    SITES_CONFIG='{"SITE_001": {"display_name": "Site 1","nav_option": "12345","depth_conversion_type": "default","pressure_unit": "hpa","enabled": true}}
+  **Configuration Notes**
+    *Site ID (the key):*
+        Must match the CSV filename without extension
+        CSV files will be named: {site_id}.csv and baro{site_id}.csv
+        Used as "Sample Point" name in output files
+        Example: "SITE_001" creates SITE_001.csv and baroSITE_001.csv
+
+    *Depth Conversion Types:*
+        "default": Converts feet to meters (multiply by 0.3048) - standard AquaTroll output
+        "divide_by_100": Converts centimeters to meters (divide by 100) - for cm-based sensors
+
+    *Pressure Units:*
+        "hpa": Hectopascals (default for most barometric pressure sensors)
+        "psi": Pounds per square inch (for some sensor models like certain AquaTroll configurations)
+
+    *Enabled Flag:*
+        true: Site will be scraped, validated, and included in reports
+        false: Site will be skipped (use for sites not yet deployed or temporarily offline)
+
+    *Adding New Sites*
+        To add a new monitoring site:
+            Get the nav_option from your logger portal
+            Determine the pressure unit your sensor uses (hpa or psi)
+            Determine depth conversion needed (default for feet, divide_by_100 for cm)
+            Add entry to SITES_CONFIG:
+
+## Automating Pipeline with Cron (Linux/Raspberry Pi)
+
+To setup a scheduled run:
+
+1.  Open the crontab editor for the current user:
+
+    ```bash
+
+    crontab -e
+
+    ```
+2.  Add the following line at the bottom of the file to schedule the script. This example runs at 17:00 (5 PM) on the 28th of every month:
+    ```cron
+    # Run AquaTroll Pipeline monthly
+    0 17 28 * * /path/to/your/project/AquaTroll.Telemetry.Pipeline/venv/bin/python /path/to/your/project/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /path/to/your/project/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
+    ```
+    *   **Important:** Replace `/path/to/your/project/` with the actual absolute path to where you cloned the `AquaTroll.Telemetry.Pipeline` directory (e.g., `/home/pi/`).
+    *   This command explicitly uses the Python interpreter inside your virtual environment (`venv/bin/python`).
+    *   Output and errors from the script will be appended (`>>`) to `cron.log` in the project directory.
+
+3.  Save and close the editor.
+    *   For `nano`: Press `Ctrl+O`, Enter, then `Ctrl+X`.
+    *   You should see a message like `crontab: installing new crontab`.
+4.  **Verify the cron job was added:** List the active cron jobs for the user:
+    ```bash
+    crontab -l
+    ```
+    You should see the line you just added listed in the output. This confirms the schedule is active.

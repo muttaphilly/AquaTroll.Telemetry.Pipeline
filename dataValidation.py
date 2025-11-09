@@ -21,21 +21,32 @@ def load_site_config():
     global SITE_CONFIG, EXPECTED_SITES
     logger_instance.info("Loading site configuration from environment variables.")
     try:
-        site_config_json = os.getenv('SITE_CONFIG_JSON', '{}')
-        SITE_CONFIG = json.loads(site_config_json)
+        # Load sites from .env
+        sites_config_json = os.getenv('SITES_CONFIG', '{}')
+        SITE_CONFIG = json.loads(sites_config_json)
+        
         if not isinstance(SITE_CONFIG, dict):
-            logger_instance.warning("SITE_CONFIG_JSON env variable not a valid JSON dictionary. Using empty config.")
+            logger_instance.warning("SITES_CONFIG env variable not a valid JSON dictionary. Using empty config.")
             SITE_CONFIG = {} 
+        
         # Only include enabled sites in EXPECTED_SITES
         EXPECTED_SITES = set()
-        for site_name, config in SITE_CONFIG.items():
-            if config.get('enabled', True):  # Default to enabled
-                EXPECTED_SITES.add(site_name)
+        for site_id, config in SITE_CONFIG.items():
+            if config.get('enabled', False):
+                EXPECTED_SITES.add(site_id)
             else:
-                logger_instance.info(f"Site {site_name} is disabled, not expecting data file.")
-        logger_instance.info(f"Loaded configuration for {len(EXPECTED_SITES)} expected enabled sites.")    
+                logger_instance.info(f"Site {site_id} is disabled, not expecting data file.")
+        
+        logger_instance.info(f"Loaded configuration for {len(EXPECTED_SITES)} expected enabled sites.")
+        
+        # Log which sites are expected for transparency
+        if EXPECTED_SITES:
+            logger_instance.info(f"Expected enabled sites: {', '.join(sorted(EXPECTED_SITES))}")
+        else:
+            logger_instance.warning("No enabled sites found in SITES_CONFIG")
+        
     except json.JSONDecodeError:
-        logger_instance.error("Failed to parse SITE_CONFIG_JSON env variable. Using empty config.", exc_info=True)
+        logger_instance.error("Failed to parse SITES_CONFIG env variable. Using empty config.", exc_info=True)
         SITE_CONFIG = {}
         EXPECTED_SITES = set()
     except Exception as e:
@@ -77,7 +88,7 @@ def format_datetime_separated(dt_series: pd.Series) -> pd.Series:
         # Format time part with guaranteed formatting
         time_part = f"{hour_12}:{minute:02d}:{second:02d} {am_pm}"
         
-        # Join with guaranteed single space
+        # Join with a single space
         return f"{date_part} {time_part}"
     
     return dt_series.apply(format_single_datetime)
@@ -758,7 +769,7 @@ def consolidate_csv_files(
         try:
             excel_df = final_df_processed.copy()
             
-            # Define desired column order (all columns we want to see)
+            # Define desired column order
             desired_column_order = [
                 'Sample Point', 
                 'Date Time (dd/mm/yyyy hh24:mi:ss)', 

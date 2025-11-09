@@ -51,7 +51,7 @@ if __name__ == "__main__":
                 
     # Database email
     if os.path.exists(pbo_pools_file):
-        recipients = autoEmail.send_pbo_pools_email(pbo_pools_file)
+        recipients = autoEmail.send_database_email(pbo_pools_file)
         if recipients:
             print(f"\nValidated and verified data sent to environmental database: {', '.join(recipients)}")
         else:

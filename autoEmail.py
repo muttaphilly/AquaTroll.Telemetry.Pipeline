@@ -10,7 +10,7 @@ import logging
 
 # Configure logger (sauce: runPipeline)
 log = logging.getLogger(__name__)
-
+load_dotenv()
 current_month = datetime.now().strftime("%B %Y")
 
 def send_email_with_attachment(recipient_emails, subject, body, attachment_path):
@@ -105,60 +105,63 @@ def send_validated_data_email(csv_path, html_report_path=None):
     Returns:
         list or bool: List of recipients if successful, False otherwise
     """
-    recipient_string = os.getenv('RECIPIENT_DEPTH_DATA')
+    recipient_string = os.getenv('RECIPIENT_VALIDATION')
     recipients = parse_email_list(recipient_string)
     
     if not recipients:
-        log.warning("Depth data email list is not defined. Skipping email.")
+        log.warning("Validation report email list is not defined. Skipping email.")
         return False
     
-    subject = os.getenv('DEPTH_DATA_EMAIL_SUBJECT', "Paraburdoo EMP Pools Logger Data Report")
-    body_template = os.getenv('DEPTH_DATA_EMAIL_BODY', "Please find attached validated depth data for {month}:\n {filename}")
-    body = body_template.format(month=current_month, filename=os.path.basename(csv_path))
+    subject = os.getenv('VALIDATION_EMAIL_SUBJECT', "Logger Validation Report")
     
-    # Attach A/B tests (if present)
+    # Build attachment list with bullet points
+    attachments_list = [f"* {os.path.basename(csv_path)}"]
     if html_report_path and os.path.exists(html_report_path):
-        body += f"\n\nAB Test Report: {os.path.basename(html_report_path)}"
+        attachments_list.append(f"* {os.path.basename(html_report_path)}")
+    
+    # Format body with bullet points
+    body = f"Please find attached validated depth data for {current_month}:\n" + "\n".join(attachments_list)
         
-        # Attach both files (loads from env)
-        sender_email = os.getenv('EMAIL_SENDER_ADDRESS')
-        sender_password = os.getenv('EMAIL_SENDER_PASSWORD')
-        smtp_server = os.getenv('EMAIL_SMTP_SERVER')
-        smtp_port_str = os.getenv('EMAIL_SMTP_PORT')
+    # Attach both files (loads from env)
+    sender_email = os.getenv('EMAIL_SENDER_ADDRESS')
+    sender_password = os.getenv('EMAIL_SENDER_PASSWORD')
+    smtp_server = os.getenv('EMAIL_SMTP_SERVER')
+    smtp_port_str = os.getenv('EMAIL_SMTP_PORT')
         
-        if not all([sender_email, sender_password, smtp_server, smtp_port_str]):
-            log.error("Email configuration missing in .env file. Cannot send email.")
-            return False
+    if not all([sender_email, sender_password, smtp_server, smtp_port_str]):
+        log.error("Email configuration missing in .env file. Cannot send email.")
+        return False
         
-        try:
-            smtp_port = int(smtp_port_str)
-        except ValueError:
-            log.error(f"Invalid EMAIL_SMTP_PORT: {smtp_port_str}. Must be an integer.")
-            return False
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        log.error(f"Invalid EMAIL_SMTP_PORT: {smtp_port_str}. Must be an integer.")
+        return False
         
-        if not os.path.exists(csv_path):
-            log.error(f"CSV file not found: {csv_path}. Cannot send email.")
-            return False
+    if not os.path.exists(csv_path):
+        log.error(f"CSV file not found: {csv_path}. Cannot send email.")
+        return False
         
-        # Create email
-        message = MIMEMultipart()
-        message['From'] = sender_email
-        message['To'] = ", ".join(recipients)
-        message['Subject'] = subject
-        message.attach(MIMEText(body, 'plain'))
+    # Create email
+    message = MIMEMultipart()
+    message['From'] = sender_email
+    message['To'] = ", ".join(recipients)
+    message['Subject'] = subject
+    message.attach(MIMEText(body, 'plain'))
         
-        # Attach CSV
-        try:
-            with open(csv_path, "rb") as attachment:
-                part = MIMEApplication(attachment.read(), Name=os.path.basename(csv_path))
-            part['Content-Disposition'] = f'attachment; filename="{os.path.basename(csv_path)}"'
-            message.attach(part)
-            log.debug(f"Successfully attached file: {os.path.basename(csv_path)}")
-        except Exception as e:
-            log.error(f"Error attaching file {csv_path}: {e}")
-            return False
+    # Attach CSV
+    try:
+        with open(csv_path, "rb") as attachment:
+            part = MIMEApplication(attachment.read(), Name=os.path.basename(csv_path))
+        part['Content-Disposition'] = f'attachment; filename="{os.path.basename(csv_path)}"'
+        message.attach(part)
+        log.debug(f"Successfully attached file: {os.path.basename(csv_path)}")
+    except Exception as e:
+        log.error(f"Error attaching file {csv_path}: {e}")
+        return False
         
-        # Attach A/B report
+    # Attach A/B report if present
+    if html_report_path and os.path.exists(html_report_path):
         try:
             with open(html_report_path, "rb") as attachment:
                 part = MIMEApplication(attachment.read(), Name=os.path.basename(html_report_path))
@@ -167,40 +170,36 @@ def send_validated_data_email(csv_path, html_report_path=None):
             log.debug(f"Successfully attached file: {os.path.basename(html_report_path)}")
         except Exception as e:
             log.error(f"Error attaching file {html_report_path}: {e}")
-            # Will catch if a/b test is missing
-        
-        # Send email
-        context = ssl.create_default_context()
-        try:
-            server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
-            server.starttls(context=context)
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipients, message.as_string())
-            return recipients
-        except Exception as e:
-            log.error(f"Email error: {e}")
-            return False
-        finally:
-            if 'server' in locals() and server:
-                server.quit()
-    
-    # If no A/B tests, bosh on with just the CSV
-    else:
-        return send_email_with_attachment(recipients, subject, body, csv_path)
+            # Continue without it
+
+    # Send the email
+    context = ssl.create_default_context()
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+        server.starttls(context=context)
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipients, message.as_string())
+        return recipients
+    except Exception as e:
+        log.error(f"Email error: {e}")
+        return False
+    finally:
+        if 'server' in locals() and server:
+            server.quit()
 
 # ------- Auto-upload to environmental database
-def send_pbo_pools_email(attachment_path):
-    recipient_string = os.getenv('RECIPIENT_PBO_POOLS')
+def send_database_email(attachment_path):
+    recipient_string = os.getenv('RECIPIENT_DATABASE')
     recipients = parse_email_list(recipient_string)
     
     if not recipients:
-        log.warning("Environmental database email not found. Skipping email.")
+        log.warning("Database upload email recipient not found. Skipping email.")
         return False
     
-    subject_template = os.getenv('PBO_POOLS_EMAIL_SUBJECT', "{month} PBO Pools Depth Data")
+    subject_template = os.getenv('DATABASE_EMAIL_SUBJECT', "{month} Depth Data")
     subject = subject_template.format(month=current_month)
     
-    body_template = os.getenv('PBO_POOLS_EMAIL_BODY', "For Upload To Database: {filename}")
+    body_template = os.getenv('DATABASE_EMAIL_BODY', "For Upload To Database: {filename}")
     body = body_template.format(filename=os.path.basename(attachment_path))
     
     return send_email_with_attachment(recipients, subject, body, attachment_path)
