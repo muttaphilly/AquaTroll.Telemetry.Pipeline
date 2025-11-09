@@ -72,24 +72,21 @@ The tests generate an HTML report (`abTestsReport.html`) summarising results. It
     DATABASE_EMAIL_BODY="For Upload To Database: {filename}"
     SITES_CONFIG='{"SITE_001": {"display_name": "Site 1","nav_option": "12345","depth_conversion_type": "default","pressure_unit": "hpa","enabled": true}}
   **Configuration Notes**
+    
     *Site ID (the key):*
         Must match the CSV filename without extension
         CSV files will be named: {site_id}.csv and baro{site_id}.csv
         Used as "Sample Point" name in output files
         Example: "SITE_001" creates SITE_001.csv and baroSITE_001.csv
-
     *Depth Conversion Types:*
         "default": Converts feet to meters (multiply by 0.3048) - standard AquaTroll output
         "divide_by_100": Converts centimeters to meters (divide by 100) - for cm-based sensors
-
     *Pressure Units:*
         "hpa": Hectopascals (default for most barometric pressure sensors)
         "psi": Pounds per square inch (for some sensor models like certain AquaTroll configurations)
-
     *Enabled Flag:*
         true: Site will be scraped, validated, and included in reports
         false: Site will be skipped (use for sites not yet deployed or temporarily offline)
-
     *Adding New Sites*
         To add a new monitoring site:
             Get the nav_option from your logger portal
