@@ -21,13 +21,11 @@ Last Modified: 10-11-2025
 import json
 import logging
 import os
-import random
 import sys
 import unittest
 from datetime import datetime
 from getpass import getuser
 from socket import gethostname
-from unittest.mock import Mock, patch
 
 # Third-Party Libraries
 import numpy as np
@@ -409,29 +407,131 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     def test_logger_portal_authentication(self):
         """Verify logger portal authentication endpoint is accessible."""
-        with patch('playwright.sync_api.sync_playwright') as mock_playwright:
-            mock_browser = Mock()
-            mock_page = Mock()
-            mock_page.goto = Mock()
-            mock_page.locator = Mock()
+        if not self.login_url:
+            self.record_result(
+                "Logger Portal Authentication",
+                "Connectivity",
+                "SKIP",
+                "LOGIN_URL not configured in environment"
+            )
+            self.skipTest("LOGIN_URL not configured")
+            return
+        
+        # Get credentials from environment
+        login_username = os.getenv("LOGIN_USERNAME", "")
+        login_password = os.getenv("LOGIN_PASSWORD", "")
+        
+        if not login_username or not login_password:
+            self.record_result(
+                "Logger Portal Authentication",
+                "Connectivity",
+                "FAIL",
+                "LOGIN_USERNAME or LOGIN_PASSWORD not configured in environment"
+            )
+            self.fail("Login credentials not configured")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        try:
+            # Create session to handle cookies and redirects
+            session = requests.Session()
             
-            try:
-                self.record_result(
-                    "Logger Portal Authentication",
-                    "Connectivity",
-                    "PASS",
-                    "Portal authentication endpoint verified"
-                )
-                self.assertTrue(True)
-            except Exception as e:
+            # First, verify the login page is accessible
+            start_time = datetime.now()
+            response = session.get(self.login_url, headers=headers, timeout=10)
+            response_time = (datetime.now() - start_time).total_seconds()
+            
+            if response.status_code != 200:
                 self.record_result(
                     "Logger Portal Authentication",
                     "Connectivity",
                     "FAIL",
-                    f"Authentication failed: {str(e)}"
+                    f"Login page not accessible (Status: {response.status_code})"
                 )
-                self.fail(f"Portal authentication test failed: {e}")
-    
+                self.fail(f"Login page returned status {response.status_code}")
+            
+            # Parse the login form to get any hidden fields (ASP.NET ViewState, etc.)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Build form data with all hidden fields plus credentials
+            form_data = {}
+            
+            # Get all hidden input fields (ASP.NET requires these)
+            for hidden_input in soup.find_all('input', type='hidden'):
+                name = hidden_input.get('name')
+                value = hidden_input.get('value', '')
+                if name:
+                    form_data[name] = value
+            
+            # Add login credentials
+            form_data['txtUsername'] = login_username
+            form_data['txtPassword'] = login_password
+            
+            # Also look for submit button value
+            submit_button = soup.find('input', type='submit')
+            if submit_button and submit_button.get('name'):
+                form_data[submit_button.get('name')] = submit_button.get('value', '')
+            
+            # Submit login form
+            auth_start_time = datetime.now()
+            login_response = session.post(
+                self.login_url,
+                data=form_data,
+                headers=headers,
+                timeout=15,
+                allow_redirects=True
+            )
+            auth_time = (datetime.now() - auth_start_time).total_seconds()
+            
+            # Check authenticated page reached (i.e. not still on login page)
+            final_url = login_response.url
+            
+            if 'logon.aspx' in final_url.lower():
+                # Still on login page = authentication failed
+                self.record_result(
+                    "Logger Portal Authentication",
+                    "Connectivity",
+                    "FAIL",
+                    f"Authentication failed - credentials rejected (remained on login page)"
+                )
+                self.fail("Authentication failed - invalid credentials")
+            else:
+                # Redirected to any page other than login = authentication successful 
+                self.record_result(
+                    "Logger Portal Authentication",
+                    "Connectivity",
+                    "PASS",
+                    f"Successfully authenticated and redirected to portal (Response time: {response_time:.2f}s, Auth time: {auth_time:.2f}s, Landing page: {final_url})"
+                )
+                self.assertTrue(True)
+            
+        except requests.exceptions.Timeout:
+            self.record_result(
+                "Logger Portal Authentication",
+                "Connectivity",
+                "FAIL",
+                "Connection timeout - portal not responding"
+            )
+            self.fail("Connection timeout")
+        except requests.exceptions.RequestException as e:
+            self.record_result(
+                "Logger Portal Authentication",
+                "Connectivity",
+                "FAIL",
+                f"Connection error: {str(e)}"
+            )
+            self.fail(f"Could not connect to logger portal: {e}")
+        except Exception as e:
+            self.record_result(
+                "Logger Portal Authentication",
+                "Connectivity",
+                "FAIL",
+                f"Authentication error: {str(e)}"
+            )
+            self.fail(f"Portal authentication test failed: {e}")
+       
     # ========================================================================
     # DATA STRUCTURE TESTS
     # ========================================================================
