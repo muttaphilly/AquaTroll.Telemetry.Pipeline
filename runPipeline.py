@@ -1,10 +1,9 @@
 import os
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
-import loggerScraper
+import httpLoggerScraper
 import dataValidation
-import autoEmail
 import testsAB
+import autoEmail
 
 # ------------ The captain. Scrape -> Validate -> Email. ------------
 
@@ -21,8 +20,7 @@ if __name__ == "__main__":
 # ----------------------------------------------------------------------
     # Step 1: Run scrapers
 # ----------------------------------------------------------------------
-    with sync_playwright() as playwright:
-        loggerScraper.run(playwright, input_folder)
+    httpLoggerScraper.run(input_folder)
 
 # ----------------------------------------------------------------------
     # Step 2: Data validation and verification
@@ -49,7 +47,7 @@ if __name__ == "__main__":
     else:
         print("Failed to send verification data to enviro team (output_file not found)")
                 
-    # Database email
+    # SQL Database email
     if os.path.exists(pbo_pools_file):
         recipients = autoEmail.send_database_email(pbo_pools_file)
         if recipients:
