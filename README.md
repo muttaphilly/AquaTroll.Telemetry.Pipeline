@@ -29,7 +29,7 @@ This project links Maxy’s hardware with a software system that automates key p
 
 ## How it Works
 The main script, `runPipeline.py`, orchestrates the following steps:
-1. **The HTTP scraper (`httpLoggerScraper.py`)** uses a session-based approach, handling authentication (preserves cookies through requests.Session(), form entry (extracts and preserves ASP.NET ViewState tokens), menu support (ids portal mode) and downloads (fetches via channel-specific URLs).
+1. **AquaTroll scraper (`httpLoggerScraper.py`)** uses a session-based approach, handling authentication (preserves cookies through requests.Session(), form entry (extracts and preserves ASP.NET ViewState tokens), menu support (ids portal mode) and downloads (fetches via channel-specific URLs).
 2. **Scraping Weather Data (`weatherStation.py`):** Uses a GET Request and BeautifulSoup to scrape weather website for daily barometric pressure readings.
 3. **Data Validation & Calibration (`dataValidation.py`):**
 * Reads CSVs from `data_downloads/`.
