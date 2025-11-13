@@ -29,7 +29,7 @@ This project links Maxy’s hardware with a software system that automates key p
 
 ## How it Works
 The main script, `runPipeline.py`, orchestrates the following steps:
-1. **Scraping Logger Data (`loggerScraper.py`):** Uses Playwright to automate a web browser and download raw level and barometric pressure CSV files into the `data_downloads/` directory. Merges these two files for each location.
+1. **The HTTP scraper (`httpLoggerScraper.py`)** uses a session-based approach, handling authentication (preserves cookies through requests.Session(), form entry (extracts and preserves ASP.NET ViewState tokens), menu support (ids portal mode) and downloads (fetches via channel-specific URLs).
 2. **Scraping Weather Data (`weatherStation.py`):** Uses a GET Request and BeautifulSoup to scrape weather website for daily barometric pressure readings.
 3. **Data Validation & Calibration (`dataValidation.py`):**
 * Reads CSVs from `data_downloads/`.
@@ -57,6 +57,36 @@ To maintain data integrity, the project includes A/B tests implemented in `tests
 - Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
 
 The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in the transformed_data folder.
+
+## Installation
+
+1. Clone the repository:
+```bash
+   git clone <your-repo-url>
+   cd AquaTroll.Telemetry.Pipeline
+```
+
+2. Create and activate virtual environment:
+```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Linux/Mac
+```
+
+3. Install dependencies:
+```bash
+   pip install -r requirements.txt
+```
+
+4. Configure environment:
+```bash
+   cp .env.example .env
+   # Edit .env with your credentials and site configuration
+```
+
+5. Test the pipeline:
+```bash
+   python runPipeline.py
+```
 
 ## Configuration
   ### Required Environment Variables
