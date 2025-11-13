@@ -1,5 +1,6 @@
-python-dotenv
-playwright
-pandas
-requests
-beautifulsoup4
+  python-dotenv
+  pandas
+  numpy
+  requests
+  beautifulsoup4
+  python-dateutil
