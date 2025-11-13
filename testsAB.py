@@ -4,13 +4,13 @@ A/B tests for the data scraping, validation & processing pipeline.
 
 Monthly verification of script performance through testing of:
 - Data connectivity and authentication
-- Validation or returned data structures
+- Validation of returned data structures
 - Verification of depth calculations
 - Site availability checks
 - Flagging of any statistical anomalies
 
 Author: Philip Curry
-Last Modified: 10-11-2025
+Last Modified: 13-11-2025
 """
 
 # ============================================================================
@@ -60,9 +60,19 @@ TEST_DESCRIPTIONS = {
     ),
     "Logger Portal Authentication": (
         "Tests connectivity to the logger data portal and validates authentication "
+        "credentials can successfully login to the system."
+    ),
+    "Logger Portal Node Selection": (
+        "Verifies ability to navigate to and select specific nodes/tables in the "
+        "logger portal after authentication."
+    ),
+    "Logger Portal CSV Download": (
+        "Confirms the presence and functionality of CSV download button for data "
+        "extraction."
     ),
     "Weather Data Structure": (
-        "Validates that scraped weather data contains the expected column structure, "
+        "Verifies weather website accessibility & confirms validates returned result contains "
+        "pressure data at expected positions (9am at position 15, 3pm at position 21)."
     ),
     "Logger Data Structure": (
         "Checks that downloaded logger CSV files contain required columns for "
@@ -146,7 +156,7 @@ HTML_FOOTER = """
 class CalculationConstants:
     """
     Constants used in depth calculation and pressure conversion.
-    These values match those in dataValidation.py for consistency.
+    These values match those in dataValidation.py.
     """
     # Pressure conversion
     HPA_TO_PSI = 0.0145038
@@ -155,7 +165,7 @@ class CalculationConstants:
     # Depth adjustment (AquaTroll specifications)
     CONVERSION_FACTOR = 0.70307  # Pressure differential to water column height
     
-    # Thresholds for adjustment application (adjiusts for observed localised variations)
+    # Thresholds for adjustment application (adjusts for observed localised variations)
     MIN_DEPTH_THRESHOLD = 0.3  # meters - prevents corrections in shallow pools
     MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for sensor noise
     
@@ -289,6 +299,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         cls.results = []
         cls.test_start_time = datetime.now()
         
+        # Session storage for multi-step tests
+        cls.auth_session = None
+        cls.channel_response = None
+        
         # Suppress logging during tests
         logging.getLogger().setLevel(logging.CRITICAL)
         
@@ -331,8 +345,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CONNECTIVITY TESTS
     # ========================================================================
     
-    def test_weather_website_accessibility(self):
-        """Verify weather website is accessible."""
+    def test_01_weather_website_accessibility(self):
+        """Test connectivity to weather website."""
         if not self.weather_url:
             self.record_result(
                 "Weather Website Accessibility",
@@ -341,6 +355,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 "WEATHER_URL not configured in environment"
             )
             self.fail("WEATHER_URL not configured")
+            return
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -361,25 +376,24 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         "Weather Website Accessibility",
                         "Connectivity",
                         "PASS",
-                        f"Successfully connected (Status: {response.status_code}, Response time: {response_time:.2f}s, Table found: YES)"
+                        f"Successfully connected (HTTP {response.status_code}, {response_time:.2f}s, table found)"
                     )
-                    self.assertTrue(True)
                 else:
                     self.record_result(
                         "Weather Website Accessibility",
                         "Connectivity",
                         "WARNING",
-                        f"Connected but table.data not found (Status: {response.status_code})"
+                        f"Connected but table.data not found (HTTP {response.status_code})"
                     )
-                    self.assertTrue(True)
             else:
                 self.record_result(
                     "Weather Website Accessibility",
                     "Connectivity",
                     "FAIL",
-                    f"Connection failed (Status: {response.status_code})"
+                    f"Weather website returned HTTP {response.status_code}"
                 )
-                self.fail(f"Weather site returned status {response.status_code}")
+                self.fail(f"Weather website returned HTTP {response.status_code}")
+                
         except requests.exceptions.Timeout:
             self.record_result(
                 "Weather Website Accessibility",
@@ -395,7 +409,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 "FAIL",
                 f"Connection error: {str(e)}"
             )
-            self.fail(f"Could not connect to weather site: {e}")
+            self.fail(f"Connection error: {e}")
         except Exception as e:
             self.record_result(
                 "Weather Website Accessibility",
@@ -405,8 +419,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail(f"Unexpected error: {e}")
     
-    def test_logger_portal_authentication(self):
-        """Verify logger portal authentication endpoint is accessible."""
+    def test_02_logger_portal_authentication(self):
+        """Test authentication to the logger portal using HTTP."""
         if not self.login_url:
             self.record_result(
                 "Logger Portal Authentication",
@@ -417,7 +431,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.skipTest("LOGIN_URL not configured")
             return
         
-        # Get credentials from environment
         login_username = os.getenv("LOGIN_USERNAME", "")
         login_password = os.getenv("LOGIN_PASSWORD", "")
         
@@ -426,56 +439,50 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 "Logger Portal Authentication",
                 "Connectivity",
                 "FAIL",
-                "LOGIN_USERNAME or LOGIN_PASSWORD not configured in environment"
+                "LOGIN_USERNAME or LOGIN_PASSWORD not configured"
             )
             self.fail("Login credentials not configured")
+            return
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         try:
-            # Create session to handle cookies and redirects
+            # Create session
             session = requests.Session()
             
-            # First, verify the login page is accessible
-            start_time = datetime.now()
+            # Get login page
             response = session.get(self.login_url, headers=headers, timeout=10)
-            response_time = (datetime.now() - start_time).total_seconds()
             
             if response.status_code != 200:
                 self.record_result(
                     "Logger Portal Authentication",
-                    "Connectivity",
+                    "Logger Portal",
                     "FAIL",
-                    f"Login page not accessible (Status: {response.status_code})"
+                    f"Login page not accessible (HTTP {response.status_code})"
                 )
-                self.fail(f"Login page returned status {response.status_code}")
+                self.__class__.auth_session = None
+                self.fail(f"Login page returned HTTP {response.status_code}")
+                return
             
-            # Parse the login form to get any hidden fields (ASP.NET ViewState, etc.)
+            # Parse login form
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Build form data with all hidden fields plus credentials
             form_data = {}
             
-            # Get all hidden input fields (ASP.NET requires these)
+            # Get hidden fields (ASP.NET ViewState)
             for hidden_input in soup.find_all('input', type='hidden'):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
                     form_data[name] = value
             
-            # Add login credentials
+            # Add credentials
             form_data['txtUsername'] = login_username
             form_data['txtPassword'] = login_password
+            form_data['btnLogon'] = 'Logon'
             
-            # Also look for submit button value
-            submit_button = soup.find('input', type='submit')
-            if submit_button and submit_button.get('name'):
-                form_data[submit_button.get('name')] = submit_button.get('value', '')
-            
-            # Submit login form
-            auth_start_time = datetime.now()
+            # Submit login
             login_response = session.post(
                 self.login_url,
                 data=form_data,
@@ -483,61 +490,256 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 timeout=15,
                 allow_redirects=True
             )
-            auth_time = (datetime.now() - auth_start_time).total_seconds()
             
-            # Check authenticated page reached (i.e. not still on login page)
-            final_url = login_response.url
-            
-            if 'logon.aspx' in final_url.lower():
-                # Still on login page = authentication failed
+            # Check if redirected away from login page
+            if 'logon.aspx' in login_response.url.lower():
                 self.record_result(
                     "Logger Portal Authentication",
-                    "Connectivity",
+                    "Logger Portal",
                     "FAIL",
-                    f"Authentication failed - credentials rejected (remained on login page)"
+                    "Authentication failed - credentials rejected (remained on login page)"
                 )
-                self.fail("Authentication failed - invalid credentials")
-            else:
-                # Redirected to any page other than login = authentication successful 
-                self.record_result(
-                    "Logger Portal Authentication",
-                    "Connectivity",
-                    "PASS",
-                    f"Successfully authenticated and redirected to portal (Response time: {response_time:.2f}s, Auth time: {auth_time:.2f}s, Landing page: {final_url})"
-                )
-                self.assertTrue(True)
+                self.__class__.auth_session = None
+                self.fail("Authentication failed")
+                return
+            
+            # Success - store session for other tests (use class variable!)
+            self.__class__.auth_session = session
+            self.record_result(
+                "Logger Portal Authentication",
+                "Logger Portal",
+                "PASS",
+                f"Successfully authenticated to logger portal",
+                {
+                    'session_cookie': bool(session.cookies),
+                    'final_url': login_response.url
+                }
+            )
             
         except requests.exceptions.Timeout:
             self.record_result(
                 "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal",
                 "FAIL",
-                "Connection timeout - portal not responding"
+                "Connection timeout"
             )
+            self.__class__.auth_session = None
             self.fail("Connection timeout")
         except requests.exceptions.RequestException as e:
             self.record_result(
                 "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal",
                 "FAIL",
                 f"Connection error: {str(e)}"
             )
-            self.fail(f"Could not connect to logger portal: {e}")
+            self.__class__.auth_session = None
+            self.fail(f"Connection error: {e}")
         except Exception as e:
             self.record_result(
                 "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal",
                 "FAIL",
                 f"Authentication error: {str(e)}"
             )
-            self.fail(f"Portal authentication test failed: {e}")
+            self.__class__.auth_session = None
+            self.fail(f"Authentication error: {e}")
+    
+    def test_03_logger_portal_node_selection(self):
+        """Test ability to navigate to and select nodes/tables in the logger portal."""
+        if not hasattr(self.__class__, 'auth_session') or self.__class__.auth_session is None:
+            self.record_result(
+                "Logger Portal Node Selection",
+                "Logger Portal",
+                "SKIP",
+                "Authentication session not available"
+            )
+            self.skipTest("No authenticated session available")
+            return
+        
+        # Get first enabled site
+        enabled_sites = {name: config for name, config in self.site_config.items() 
+                        if config.get('enabled', False)}
+        
+        if not enabled_sites:
+            self.record_result(
+                "Logger Portal Node Selection",
+                "Logger Portal",
+                "SKIP",
+                "No enabled sites configured"
+            )
+            self.skipTest("No enabled sites available")
+            return
+        
+        test_site_name = list(enabled_sites.keys())[0]
+        test_site_config = enabled_sites[test_site_name]
+        nav_option = test_site_config.get('nav_option')
+        
+        if not nav_option:
+            self.record_result(
+                "Logger Portal Node Selection",
+                "Logger Portal",
+                "FAIL",
+                f"Site {test_site_name} missing nav_option in configuration"
+            )
+            self.__class__.channel_response = None
+            self.fail("Navigation option not configured")
+            return
+        
+        base_url = os.getenv("BASE_URL", "").rstrip('/')
+        channel_url = f'{base_url}/data-channels.aspx?id={nav_option}'
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        try:
+            # Navigate to channel page
+            response = self.__class__.auth_session.get(channel_url, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                self.record_result(
+                    "Logger Portal Node Selection",
+                    "Logger Portal",
+                    "FAIL",
+                    f"Failed to navigate to channel (HTTP {response.status_code})"
+                )
+                self.__class__.channel_response = None
+                self.fail(f"Navigation returned HTTP {response.status_code}")
+                return
+            
+            # Parse page to verify channel elements
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Check on a valid channel page
+            page_text = response.text.lower()
+            has_node_or_tree = ('node' in page_text or 'tree' in page_text)
+            has_data_table = soup.find('table') is not None
+            
+            validation_score = sum([has_node_or_tree, has_data_table])
+            
+            # Accept if both elements present (page loaded with proper structure)
+            if validation_score >= 2:
+                # Store response for download test
+                self.__class__.channel_response = response
+                self.record_result(
+                    "Logger Portal Node Selection",
+                    "Logger Portal",
+                    "PASS",
+                    f"Successfully navigated to channel {nav_option} for site {test_site_name} (validation score: {validation_score}/2)",
+                    {
+                        'site': test_site_name,
+                        'nav_option': nav_option,
+                        'node_or_tree_present': has_node_or_tree,
+                        'data_table': has_data_table
+                    }
+                )
+            else:
+                self.__class__.channel_response = None
+                self.record_result(
+                    "Logger Portal Node Selection",
+                    "Logger Portal",
+                    "FAIL",
+                    f"Channel page missing expected elements (score: {validation_score}/2)"
+                )
+                self.fail("Channel page validation failed")
+                
+        except requests.exceptions.Timeout:
+            self.record_result(
+                "Logger Portal Node Selection",
+                "Logger Portal",
+                "FAIL",
+                "Navigation timeout"
+            )
+            self.__class__.channel_response = None
+            self.fail("Navigation timeout")
+        except requests.exceptions.RequestException as e:
+            self.record_result(
+                "Logger Portal Node Selection",
+                "Logger Portal",
+                "FAIL",
+                f"Navigation error: {str(e)}"
+            )
+            self.__class__.channel_response = None
+            self.fail(f"Navigation error: {e}")
+    
+    def test_04_logger_portal_csv_download(self):
+        """Test presence of CSV download functionality."""
+        if not hasattr(self.__class__, 'channel_response') or self.__class__.channel_response is None:
+            self.record_result(
+                "Logger Portal CSV Download",
+                "Logger Portal",
+                "SKIP",
+                "No channel navigation response available"
+            )
+            self.skipTest("No channel page available")
+            return
+        
+        try:
+            soup = BeautifulSoup(self.__class__.channel_response.text, 'html.parser')
+            page_text = self.__class__.channel_response.text.lower()
+            
+            # Check for table/channel selection mechanism
+            has_channel_selector = (
+                soup.find('select') is not None or  # Any dropdown
+                soup.find('form') is not None or     # Any form
+                'table' in page_text                  # Reference to tables
+            )
+            
+            # Check for CSV/export button (more comprehensive search)
+            has_csv_button = (
+                'csv' in page_text or
+                soup.find('input', attrs={'value': lambda x: x and 'csv' in str(x).lower()}) is not None or
+                soup.find('button', attrs={'value': lambda x: x and 'csv' in str(x).lower()}) is not None or
+                soup.find('a', attrs={'href': lambda x: x and 'csv' in str(x).lower()}) is not None or
+                soup.find('input', attrs={'value': lambda x: x and 'export' in str(x).lower()}) is not None
+            )
+            
+            # Both must be present
+            if has_channel_selector and has_csv_button:
+                self.record_result(
+                    "Logger Portal CSV Download",
+                    "Logger Portal",
+                    "PASS",
+                    f"CSV download capability verified: Table selector present and CSV/export button found"
+                )
+            elif has_csv_button and not has_channel_selector:
+                self.record_result(
+                    "Logger Portal CSV Download",
+                    "Logger Portal",
+                    "WARNING",
+                    f"CSV button found but no table selection mechanism detected"
+                )
+            elif has_channel_selector and not has_csv_button:
+                self.record_result(
+                    "Logger Portal CSV Download",
+                    "Logger Portal",
+                    "WARNING",
+                    f"Table selection present but CSV/export button not found"
+                )
+            else:
+                self.record_result(
+                    "Logger Portal CSV Download",
+                    "Logger Portal",
+                    "FAIL",
+                    f"Neither table selection nor CSV button found on channel page"
+                )
+                self.fail("CSV download functionality not available")
+                
+        except Exception as e:
+            self.record_result(
+                "Logger Portal CSV Download",
+                "Logger Portal",
+                "FAIL",
+                f"Error checking download functionality: {str(e)}"
+            )
+            self.fail(f"Download check failed: {e}")
        
     # ========================================================================
     # DATA STRUCTURE TESTS
     # ========================================================================
     
-    def test_weather_data_structure(self):
-        """Validate weather data contains expected column structure."""
+    def test_05_weather_data_structure(self):
+        """Test weather website scraping capability and data structure."""
         if not self.weather_url:
             self.record_result(
                 "Weather Data Structure",
@@ -552,12 +754,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        # Required positions matching weatherStation.py scraping logic
-        required_positions = {
-            'MSL Pressure (9am) [hPa]': 15,  # Morning hPa (hpa_am_index)
-            'MSL Pressure (3pm) [hPa]': 21   # Afternoon hPa (hpa_pm_index)
-        }
-        
         try:
             response = requests.get(self.weather_url, headers=headers, timeout=10)
             
@@ -566,15 +762,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    f"Could not retrieve webpage (Status: {response.status_code})",
-                    {
-                        'all_columns': [],
-                        'required_columns': required_positions,
-                        'issues': [f"HTTP {response.status_code}"]
-                    }
+                    f"Could not access weather website (HTTP {response.status_code})"
                 )
-                self.fail(f"Weather site returned status {response.status_code}")
+                self.fail(f"Weather site returned HTTP {response.status_code}")
+                return
             
+            # Parse the page
             soup = BeautifulSoup(response.text, 'html.parser')
             table = soup.select_one('table.data')
             
@@ -583,23 +776,26 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    "Table with class 'data' not found in HTML",
-                    {
-                        'all_columns': [],
-                        'required_columns': required_positions,
-                        'issues': ["Table not found"]
-                    }
+                    "Table with class 'data' not found in HTML"
                 )
-                self.fail("Could not parse weather table structure")
+                self.fail("Weather table not found")
+                return
             
-            # Weather site uses colspan/rowspan for group headers
-            # Can't parse thead, analyse actual data row structure
-            
+            # Get data rows from tbody
             data_rows = table.select('tbody tr')
-            first_valid_row = None
-            headers_list = []
             
-            # Find first valid data row (skip summary rows)
+            if len(data_rows) == 0:
+                self.record_result(
+                    "Weather Data Structure",
+                    "Data Structure",
+                    "FAIL",
+                    "No data rows found in weather table"
+                )
+                self.fail("No data rows in table")
+                return
+            
+            # Check first valid data row structure
+            first_valid_row = None
             for row in data_rows:
                 cells = row.select('th, td')
                 if cells and len(cells) > 1:
@@ -613,178 +809,116 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    "Could not find valid data row in table",
-                    {
-                        'all_columns': [],
-                        'required_columns': required_positions,
-                        'issues': ["No valid data rows found"]
-                    }
+                    "Could not find valid data row in table"
                 )
-                self.fail("Could not find valid data row in table")
+                self.fail("No valid data rows found")
+                return
             
-            # Build column descriptions based on returned data structure
-            total_columns = len(first_valid_row)
+            # Verify row has expected number of cells (should be 22)
+            total_cells = len(first_valid_row)
             
-            # Headers for display in report
-            # which match the weather sites structure
-            column_descriptions = [
-                'Date (Day)',
-                'Day of Week',
-                'Min Temp (°C)',
-                'Max Temp (°C)',
-                'Rain (mm)',
-                'Evaporation (mm)',
-                'Sunshine (hours)',
-                'Max Gust Direction',
-                'Max Gust Speed (km/h)',
-                'Max Gust Time',
-                'Temp 9am (°C)',
-                'Relative Humidity 9am (%)',
-                'Cloud 9am (oktas)',
-                'Wind Direction 9am',
-                'Wind Speed 9am (km/h)',
-                'MSL Pressure 9am (hPa)',  # Position 15
-                'Temp 3pm (°C)',
-                'Relative Humidity 3pm (%)',
-                'Cloud 3pm (oktas)',
-                'Wind Direction 3pm',
-                'Wind Speed 3pm (km/h)',
-                'MSL Pressure 3pm (hPa)'   # Position 21
-            ]
+            # Check positions 15 and 21 contain valid pressure data (950-1050 hPa)
+            position_15_valid = False
+            position_21_valid = False
+            position_15_value = "N/A"
+            position_21_value = "N/A"
             
-            # Use actual column count, but provide descriptions for display
-            if total_columns <= len(column_descriptions):
-                headers_list = column_descriptions[:total_columns]
-            else:
-                # More columns than expected, add generic names
-                headers_list = column_descriptions + [f'Column_{i}' for i in range(len(column_descriptions), total_columns)]
-            
-            # Verify positions 15 and 21 exist and contain pressure data
-            position_15_ok = False
-            position_21_ok = False
-            
-            if total_columns > 15:
-                # Extract value at position 15 from first valid row
+            if total_cells > 15:
                 val_15 = first_valid_row[15].get_text(strip=True)
                 try:
-                    # Check numeric value in reasonable hPa range (950-1050)
                     float_val = float(val_15)
-                    position_15_ok = 950 <= float_val <= 1050
+                    position_15_valid = 950 <= float_val <= 1050
+                    position_15_value = val_15
                 except (ValueError, TypeError):
-                    position_15_ok = False
+                    pass
             
-            if total_columns > 21:
-                # Extract value at position 21 from first valid row
+            if total_cells > 21:
                 val_21 = first_valid_row[21].get_text(strip=True)
                 try:
-                    # Check numeric value 
                     float_val = float(val_21)
-                    position_21_ok = 950 <= float_val <= 1050
+                    position_21_valid = 950 <= float_val <= 1050
+                    position_21_value = val_21
                 except (ValueError, TypeError):
-                    position_21_ok = False
+                    pass
             
-            test_passed = position_15_ok and position_21_ok
-            
-            if test_passed:
-                # Show sample values to user
-                sample_val_15 = first_valid_row[15].get_text(strip=True)
-                sample_val_21 = first_valid_row[21].get_text(strip=True)
-                
+            # Need both pressure columns to be valid
+            if position_15_valid and position_21_valid:
                 self.record_result(
                     "Weather Data Structure",
                     "Data Structure",
                     "PASS",
-                    f"Found {total_columns} columns. Required pressure columns at positions 15 and 21. Sample values: [15]='{sample_val_15}' hPa, [21]='{sample_val_21}' hPa",
-                    {
-                        'all_columns': headers_list,
-                        'required_columns': required_positions
-                    }
+                    f"Weather table structure verified: {total_cells} columns, pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
                 )
             else:
-                missing = []
-                if not position_15_ok:
-                    if total_columns > 15:
-                        val = first_valid_row[15].get_text(strip=True)
-                        missing.append(f"Pressure data at position 15 (found: '{val}', not valid hPa)")
-                    else:
-                        missing.append(f"Position 15 does not exist (only {total_columns} columns)")
-                
-                if not position_21_ok:
-                    if total_columns > 21:
-                        val = first_valid_row[21].get_text(strip=True)
-                        missing.append(f"Pressure data at position 21 (found: '{val}', not valid hPa)")
-                    else:
-                        missing.append(f"Position 21 does not exist (only {total_columns} columns)")
+                issues = []
+                if not position_15_valid:
+                    issues.append(f"Position 15 invalid (got: '{position_15_value}')")
+                if not position_21_valid:
+                    issues.append(f"Position 21 invalid (got: '{position_21_value}')")
                 
                 self.record_result(
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    f"Missing required columns: {', '.join(missing)}",
-                    {
-                        'all_columns': headers_list,
-                        'required_columns': required_positions,
-                        'issues': missing
-                    }
+                    f"Weather table pressure data validation failed: {', '.join(issues)}"
                 )
+                self.fail("Pressure data not in expected positions")
             
-            self.assertTrue(test_passed, f"Weather table structure validation failed: {missing if not test_passed else ''}")
-            
+        except requests.exceptions.Timeout:
+            self.record_result(
+                "Weather Data Structure",
+                "Data Structure",
+                "FAIL",
+                "Connection timeout accessing weather website"
+            )
+            self.fail("Connection timeout")
         except requests.exceptions.RequestException as e:
             self.record_result(
                 "Weather Data Structure",
                 "Data Structure",
                 "FAIL",
-                f"Connection error: {str(e)}",
-                {
-                    'all_columns': [],
-                    'required_columns': required_positions,
-                    'issues': [str(e)]
-                }
+                f"Connection error: {str(e)}"
             )
-            self.fail(f"Could not connect to weather site: {e}")
+            self.fail(f"Connection error: {e}")
         except Exception as e:
             self.record_result(
                 "Weather Data Structure",
                 "Data Structure",
                 "FAIL",
-                f"Parsing error: {str(e)}",
-                {
-                    'all_columns': [],
-                    'required_columns': required_positions,
-                    'issues': [str(e)]
-                }
+                f"Error parsing weather data: {str(e)}"
             )
-            self.fail(f"Could not parse weather table structure: {e}")
+            self.fail(f"Failed to parse weather data: {e}")
     
-    def test_logger_data_structure(self):
-        """Verify logger CSV files have required column structure."""
-        if not os.path.exists(self.data_downloads_path):
+    def test_06_logger_data_structure(self):
+        """Test logger CSV data structure."""
+        if not os.path.exists('data_downloads'):
             self.record_result(
                 "Logger Data Structure",
                 "Data Structure",
-                "SKIP",
-                "data_downloads directory not found - skipping test"
+                "FAIL",
+                "data_downloads directory not found"
             )
-            self.skipTest("data_downloads directory not available")
+            self.fail("data_downloads directory not available - pipeline may not have run")
             return
         
-        csv_files = [f for f in os.listdir(self.data_downloads_path) if f.endswith('.csv')]
+        csv_files = [f for f in os.listdir('data_downloads') if f.endswith('.csv') and f != 'weather_data.csv']
         
         if not csv_files:
             self.record_result(
                 "Logger Data Structure",
                 "Data Structure",
-                "SKIP",
-                "No CSV files found in data_downloads - skipping test"
+                "FAIL",
+                "No logger CSV files found in data_downloads"
             )
-            self.skipTest("No CSV files available for testing")
+            self.fail("No logger CSV files available - pipeline may not have run")
             return
         
-        test_file = os.path.join(self.data_downloads_path, csv_files[0])
+        test_file = os.path.join('data_downloads', csv_files[0])
         
         try:
             df = pd.read_csv(test_file)
+            
+            # Required columns from httpLoggerScraper.py output
             required_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)']
             
             columns_present = all(col in df.columns for col in required_columns)
@@ -794,9 +928,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Logger Data Structure",
                     "Data Structure",
                     "PASS",
-                    f"Expected columns verified: {', '.join(required_columns)}"
+                    f"Logger data has required columns: {', '.join(required_columns)}"
                 )
-                self.assertTrue(True)
             else:
                 missing = [col for col in required_columns if col not in df.columns]
                 self.record_result(
@@ -812,7 +945,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 "Logger Data Structure",
                 "Data Structure",
                 "FAIL",
-                f"Error reading CSV: {str(e)}"
+                f"Error reading logger data: {str(e)}"
             )
             self.fail(f"Failed to read logger data: {e}")
     
@@ -820,8 +953,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CONFIGURATION TESTS
     # ========================================================================
     
-    def test_site_configuration(self):
-        """Validate site configuration from SITES_CONFIG."""
+    def test_07_site_configuration(self):
+        """Test site configuration from environment."""
         try:
             enabled_sites = []
             disabled_sites = []
@@ -829,21 +962,23 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Parse enabled flag from SITES_CONFIG
             for site_name, config in self.site_config.items():
                 is_enabled = config.get('enabled', False)
+                site_display = f"{site_name} ({config.get('display_name', 'N/A')})"
+                
                 if is_enabled:
-                    enabled_sites.append(site_name)
+                    enabled_sites.append(site_display)
                 else:
-                    disabled_sites.append(site_name)
+                    note = config.get('notes', '')
+                    disabled_sites.append(f"{site_name}: {note}" if note else site_name)
             
             config_data = {
                 'enabled': sorted(enabled_sites),
-                'disabled': sorted(disabled_sites),
-                'missing': []
+                'disabled': sorted(disabled_sites)
             }
             
             if len(enabled_sites) == 0:
                 self.record_result(
                     "Site Configuration",
-                    "Logger Availability",
+                    "Configuration",
                     "FAIL",
                     "No enabled sites found in SITES_CONFIG",
                     config_data
@@ -852,17 +987,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             else:
                 self.record_result(
                     "Site Configuration",
-                    "Logger Availability",
+                    "Configuration",
                     "PASS",
-                    f"Found {len(enabled_sites)} enabled sites, {len(disabled_sites)} disabled sites from SITES_CONFIG",
+                    f"Enabled: {len(enabled_sites)} sites; Disabled: {len(disabled_sites)} sites",
                     config_data
                 )
-                self.assertTrue(True)
             
         except Exception as e:
             self.record_result(
                 "Site Configuration",
-                "Logger Availability",
+                "Configuration",
                 "FAIL",
                 f"Configuration error: {str(e)}"
             )
@@ -872,39 +1006,20 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CALCULATION TESTS
     # ========================================================================
     
-    def test_depth_calculation_verification(self):
-        """
-        Verify depth calculation accuracy using scraped data.
-        
-        Tests dataValidation.py formula:
-        - Site-specific depth conversions
-        - Any threshold applications (depth > 0.3m, baro diff > 5 hPa)
-        - AquaTroll pressure-to-depth conversion
-        - Cross-check against the outputted validated data
-        """
-        # Check required files exist
-        if not os.path.exists(self.data_downloads_path):
-            self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
-                "SKIP",
-                "data_downloads directory not found - skipping test"
-            )
-            self.skipTest("data_downloads directory not available")
-            return
-        
+    def test_08_depth_calculation_verification(self):
+        """Verify depth calculation accuracy."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Depth Calculation Verification",
                 "Calculations",
                 "SKIP",
-                "validatedDepthData.csv not found - skipping test"
+                "No validated data found"
             )
             self.skipTest("Validated output file not available")
             return
         
         try:
-            # Load and filter validated data
+            # Load validated data
             validated_df = load_csv_safely(self.validated_output_file)
             if validated_df is None:
                 self.skipTest("Could not load validated output file")
@@ -917,12 +1032,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Depth Calculation Verification",
                     "Calculations",
                     "SKIP",
-                    "No valid depth data found in validated output - skipping test"
+                    "No valid depth data in validated output"
                 )
                 self.skipTest("No valid depth data available")
                 return
             
-            # Select random test samples from downloaded data
+            # Test random samples
             num_samples = min(3, len(validated_df))
             test_samples = validated_df.sample(n=num_samples, random_state=42)
             
@@ -932,8 +1047,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             for idx, row in test_samples.iterrows():
                 site = row['Sample Point']
                 date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                
-                # Extract values
                 depth_m_raw = float(row['Depth(m)raw'])
                 depth_m_adjusted_expected = float(row['Depth(m)adjusted'])
                 
@@ -948,7 +1061,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                    row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '') != '':
                     logger_baro = float(row['Barometric Pressure(RAW)[Main Buffer] (hPa)'])
                 
-                # Calculate adjusted depth using helper function
+                # Calculate adjusted depth
                 calculated_adjusted_m, adjustment_applied = calculate_depth_adjustment(
                     depth_m_raw, bom_baro, logger_baro
                 )
@@ -974,21 +1087,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 if not passed:
                     all_passed = False
             
-            if len(calculation_results) == 0:
-                self.record_result(
-                    "Depth Calculation Verification",
-                    "Calculations",
-                    "SKIP",
-                    "Could not extract valid test data - skipping test"
-                )
-                self.skipTest("No valid test data available")
-                return
-            
             details = (
-                f"Tested {len(calculation_results)} calculations using dataValidation.py formula with thresholds: "
-                f"depth > {CalculationConstants.MIN_DEPTH_THRESHOLD}m, "
-                f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa. "
-                f"Formula: adjusted = raw + (CONVERSION_FACTOR * delta_p_psi / SG)"
+                f"Tested {len(calculation_results)} calculations. "
+                f"Thresholds: depth > {CalculationConstants.MIN_DEPTH_THRESHOLD}m, "
+                f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa"
             )
             
             self.record_result(
@@ -999,7 +1101,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 {'calculations': calculation_results}
             )
             
-            self.assertTrue(all_passed, "Some calculations did not match expected values")
+            if not all_passed:
+                self.fail("Some calculations did not match expected values")
             
         except Exception as e:
             self.record_result(
@@ -1010,32 +1113,25 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail(f"Calculation verification failed: {e}")
     
-    def test_psi_to_hpa_conversion(self):
-        """
-        Validate PSI to hPa conversion accuracy.
-        
-        Compares calculated values (PSI × 68.9476) against validated
-        output data from PSI-based logger sites.
-        """
-        # Check required files
+    def test_09_psi_to_hpa_conversion(self):
+        """Test PSI to hPa conversion accuracy."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "PSI to hPa Conversion",
                 "Calculations",
                 "SKIP",
-                "validatedDepthData.csv not found - skipping test"
+                "Validated output file not found"
             )
             self.skipTest("Validated output file not available")
             return
         
         try:
-            # Load validated output
             validated_df = load_csv_safely(self.validated_output_file)
             if validated_df is None:
                 self.skipTest("Could not load validated output file")
                 return
             
-            # Filter for rows with PSI data
+            # Filter for PSI data
             psi_col = 'Pressure(RAW)[Main Buffer] (PSI) - Original'
             hpa_col = 'Barometric Pressure(RAW)[Main Buffer] (hPa)'
             
@@ -1051,12 +1147,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "PSI to hPa Conversion",
                     "Calculations",
                     "SKIP",
-                    "No PSI data found in validated output - skipping test"
+                    "No PSI data found in validated output"
                 )
-                self.skipTest("No PSI data available for testing")
+                self.skipTest("No PSI data available")
                 return
             
-            # Select random test samples
+            # Test random samples
             num_samples = min(3, len(validated_df))
             test_samples = validated_df.sample(n=num_samples, random_state=42)
             
@@ -1069,11 +1165,11 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 psi_value = float(row[psi_col])
                 expected_hpa = float(row[hpa_col])
                 
-                # Calculate using conversion factor
+                # Calculate
                 calculated_hpa = psi_value * CalculationConstants.PSI_TO_HPA
                 
-                # Check with tolerance
-                tolerance = 1.0  # 1 hPa tolerance for rounding
+                # Check tolerance
+                tolerance = 1.0  # 1 hPa tolerance
                 passed = abs(calculated_hpa - expected_hpa) < tolerance
                 
                 conversion_results.append({
@@ -1091,17 +1187,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 if not passed:
                     all_passed = False
             
-            status = "PASS" if all_passed else "FAIL"
-            
             self.record_result(
                 "PSI to hPa Conversion",
                 "Calculations",
-                status,
-                f"Tested {len(conversion_results)} PSI to hPa conversions using factor: {CalculationConstants.PSI_TO_HPA}",
+                "PASS" if all_passed else "FAIL",
+                f"PSI to hPa conversion factor verified ({CalculationConstants.PSI_TO_HPA})",
                 {'conversions': conversion_results}
             )
             
-            self.assertTrue(all_passed, "PSI to hPa conversions did not match expected values")
+            if not all_passed:
+                self.fail("PSI conversions did not match expected values")
             
         except Exception as e:
             self.record_result(
@@ -1116,20 +1211,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # DATA QUALITY TESTS
     # ========================================================================
     
-    def test_statistical_anomaly_detection(self):
-        """
-        Detect statistical anomalies in validated data.
-        
-        Flags:
-        - Depth changes > 15%
-        - Pressure changes > 2%
-        """
+    def test_10_statistical_anomaly_detection(self):
+        """Test for statistical anomalies in validated data."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Statistical Anomaly Detection",
                 "Data Quality",
                 "SKIP",
-                "validatedDepthData.csv not found - skipping test"
+                "Statistical analysis requires validated data files"
             )
             self.skipTest("Validated output file not available")
             return
@@ -1148,12 +1237,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             depth_anomalies = []
             pressure_anomalies = []
             
-            # Analyse sites separately
+            # Analyse by site
             for site in df['Sample Point'].unique():
                 site_data = df[df['Sample Point'] == site].copy()
                 site_data = site_data.sort_values('Date Time (dd/mm/yyyy hh24:mi:ss)')
                 
-                # Depth anomalies
+                # Depth anomalies (>15% change)
                 if 'Depth(m)adjusted' in site_data.columns:
                     site_data['depth_pct_change'] = site_data['Depth(m)adjusted'].pct_change() * 100
                     depth_mask = abs(site_data['depth_pct_change']) > 15
@@ -1166,7 +1255,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                             'change_pct': round(site_data.loc[idx, 'depth_pct_change'], 1)
                         })
                 
-                # Pressure anomalies
+                # Pressure anomalies (>2% change)
                 if 'BomBaro' in site_data.columns:
                     site_data['pressure_pct_change'] = site_data['BomBaro'].pct_change() * 100
                     pressure_mask = abs(site_data['pressure_pct_change']) > 2
@@ -1180,7 +1269,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                                 'change_pct': round(site_data.loc[idx, 'pressure_pct_change'], 1)
                             })
             
-            # Calculate statistics
+            # Calculate stats
             depth_stats = {
                 'max_change_pct': round(max([abs(a['change_pct']) for a in depth_anomalies], default=0), 1),
                 'count': len(depth_anomalies)
@@ -1191,7 +1280,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 'count': len(pressure_anomalies)
             }
             
-            # Sort and limit
+            # Limit results
             depth_anomalies.sort(key=lambda x: abs(x['change_pct']), reverse=True)
             pressure_anomalies.sort(key=lambda x: abs(x['change_pct']), reverse=True)
             depth_anomalies = depth_anomalies[:10]
@@ -1203,7 +1292,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 "Statistical Anomaly Detection",
                 "Data Quality",
                 status,
-                f"Found {depth_stats['count']} depth anomalies (>15%), {pressure_stats['count']} pressure anomalies (>2%)",
+                f"Depth anomalies: {depth_stats['count']} (>15%), Pressure anomalies: {pressure_stats['count']} (>2%)",
                 {
                     'depth_anomalies': depth_anomalies,
                     'pressure_anomalies': pressure_anomalies,
@@ -1211,8 +1300,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     'pressure_stats': pressure_stats
                 }
             )
-            
-            self.assertTrue(True)  # Anomalies are warnings brosif, not failures
             
         except Exception as e:
             self.record_result(
@@ -1234,10 +1321,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     @classmethod
     def generate_html_report(cls):
-        """
-        Generate the HTML a/b test report.
-        """
-        timestamp = cls.test_start_time.strftime("%d/%m/%Y %H:%M:%S")
+        """Generate the HTML A/B test report."""
+        timestamp = cls.test_start_time.strftime("%Y-%m-%d %H:%M:%S")
         
         # Calculate summary stats
         total_tests = len(cls.results)
@@ -1246,7 +1331,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         warnings = sum(1 for r in cls.results if r['status'] == 'WARNING')
         skipped = sum(1 for r in cls.results if r['status'] == 'SKIP')
         
-        # Start building HTML
+        # Start HTML
         html = HTML_HEADER.format(
             timestamp=timestamp,
             computer_name=COMPUTER_NAME,
@@ -1258,24 +1343,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         <div class="summary">
             <h2>Test Summary</h2>
             <table>
-                <tr>
-                    <td><strong>Total Tests:</strong></td><td>{total_tests}</td>
-                    <td><strong>Duration:</strong></td>
-                    <td>{(datetime.now() - cls.test_start_time).total_seconds():.2f}s</td>
-                </tr>
-                <tr>
-                    <td><span class="pass">Passed:</span></td><td>{passed}</td>
-                    <td><span class="fail">Failed:</span></td><td>{failed}</td>
-                </tr>
-                <tr>
-                    <td><span class="warning">Warnings:</span></td><td>{warnings}</td>
-                    <td class="skip">Skipped:</td><td>{skipped}</td>
-                </tr>
+                <tr><th>Total Tests</th><td>{total_tests}</td></tr>
+                <tr><th>Passed</th><td class="pass">{passed}</td></tr>
+                <tr><th>Failed</th><td class="fail">{failed}</td></tr>
+                <tr><th>Warnings</th><td class="warning">{warnings}</td></tr>
+                <tr><th>Skipped</th><td class="skip">{skipped}</td></tr>
             </table>
         </div>
         """
         
-        # Group results by category
+        # Group by category
         categories = {}
         for result in cls.results:
             cat = result['category']
@@ -1283,27 +1360,29 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 categories[cat] = []
             categories[cat].append(result)
         
-        # Set category order
+        # Category order
         category_order = [
             'Connectivity',
-            'Logger Availability',
+            'Logger Portal',
+            'Configuration',
             'Data Structure',
-            'Data Quality',
-            'Calculations'
+            'Calculations',
+            'Data Quality'
         ]
         
-        # Generate sections for each category in set order
+        # Generate sections
         for category in category_order:
             if category in categories:
                 tests = categories[category]
-                html += f'<div class="test-section"><h2>{category} Tests</h2>'
+                html += f'<h2>{category} Tests</h2>'
                 
                 for test in tests:
                     status_class = test['status'].lower()
                     test_description = TEST_DESCRIPTIONS.get(test['test_name'], '')
                     
                     html += f"""
-                    <h3>{test['test_name']} - <span class="{status_class}">{test['status']}</span></h3>
+                    <div class="test-section">
+                        <h3>{test['test_name']} - <span class="{status_class}">{test['status']}</span></h3>
                     """
                     
                     if test_description:
@@ -1311,21 +1390,20 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     
                     html += f'<p>{test["details"]}</p>'
                     
-                    # Add specific data based on test type
+                    # Add test-specific data
                     if test['data']:
                         html += cls._generate_test_data_html(test)
-                
-                html += '</div>'
+                    
+                    html += '</div>'
         
-        # Add footer
+        # Footer
         html += HTML_FOOTER
         
-        # Ensure output directory exists
+        # Save report
         output_dir = os.path.dirname(cls.report_filename)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # Save report
         with open(cls.report_filename, 'w', encoding='utf-8') as f:
             f.write(html)
         
@@ -1337,141 +1415,111 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     
     @classmethod
     def _generate_test_data_html(cls, test):
-        """
-        Generate HTML for test-specific data tables.
-        
-        Args:
-            test (dict): Test result dictionary
-            
-        Returns:
-            str: HTML string for test data
-        """
+        """Generate HTML for test-specific data tables."""
         html = ""
         test_name = test['test_name']
         data = test['data']
         
-        if test_name == 'Weather Data Structure':
-            if data and 'all_columns' in data:
-                html += '<h4>All Columns Found (Array Order):</h4>'
-                html += '<div class="column-list"><pre>'
-                for i, col in enumerate(data['all_columns']):
-                    html += f"[{i}]: {col}\n"
-                html += '</pre></div>'
-                
-                if 'required_columns' in data:
-                    html += '<p><strong>Required columns verified at positions:</strong></p>'
-                    html += '<ul>'
-                    for col, pos in data['required_columns'].items():
-                        html += f'<li>{col}: Position {pos}</li>'
-                    html += '</ul>'
-                
-                if 'issues' in data and data['issues']:
-                    html += '<h4>Issues Found:</h4>'
-                    html += '<ul>'
-                    for issue in data['issues']:
-                        html += f'<li>{issue}</li>'
-                    html += '</ul>'
+        if test_name == 'Logger Portal Authentication':
+            if data:
+                html += '<h4>Authentication Success:</h4><ul>'
+                if 'session_cookie' in data:
+                    html += f'<li>Session Cookie: {data["session_cookie"]}</li>'
+                if 'final_url' in data:
+                    html += f'<li>Final URL: {data["final_url"]}</li>'
+                html += '</ul>'
+        
+        elif test_name == 'Logger Portal Node Selection':
+            if data:
+                html += '<h4>Channel Navigation:</h4><ul>'
+                if 'site' in data:
+                    html += f'<li>Site: {data["site"]}</li>'
+                if 'nav_option' in data:
+                    html += f'<li>Nav Option: {data["nav_option"]}</li>'
+                if 'node_or_tree_present' in data:
+                    html += f'<li>Node/Tree Reference: {"✓" if data["node_or_tree_present"] else "✗"}</li>'
+                if 'data_table' in data:
+                    html += f'<li>Data Table: {"✓" if data["data_table"] else "✗"}</li>'
+                html += '</ul>'
+        
+        elif test_name == 'Logger Portal CSV Download':
+            # Simplified - no detailed element breakdown needed
+            pass
         
         elif test_name == 'Site Configuration':
             if data.get('enabled'):
-                html += f'<h4>Enabled Sites ({len(data["enabled"])}):</h4>'
-                html += '<ul>'
+                html += f'<h4>Enabled Sites ({len(data["enabled"])}):</h4><ul>'
                 for site in data['enabled']:
                     html += f'<li>✓ {site}</li>'
                 html += '</ul>'
             
             if data.get('disabled'):
-                html += f'<h4>Disabled Sites ({len(data["disabled"])}):</h4>'
-                html += '<ul>'
+                html += f'<h4>Disabled Sites ({len(data["disabled"])}):</h4><ul>'
                 for site in data['disabled']:
                     html += f'<li>✓ {site}</li>'
                 html += '</ul>'
-            
-            if data.get('missing'):
-                html += f'<h4>Missing Sites:</h4>'
-                html += '<ul>'
-                for site in data['missing']:
-                    html += f'<li>✗ {site}</li>'
-                html += '</ul>'
         
         elif test_name == 'Depth Calculation Verification':
-            html += '<h4>Calculation Results:</h4>'
-            html += '<table class="calculation-table">'
-            html += '<tr><th>Test</th><th>Site</th><th>Date</th><th>Depth Raw (m)</th>'
-            html += '<th>BOM Baro</th><th>Logger Baro</th><th>Adjustment</th>'
-            html += '<th>Calculated</th><th>Expected</th><th>Diff</th><th>Result</th></tr>'
-            
-            for calc in data['calculations']:
-                pass_fail = '<span class="pass">✓</span>' if calc['passed'] else '<span class="fail">✗</span>'
-                adjustment_text = 'Yes' if calc['adjustment_applied'] else 'No'
-                html += f"""<tr>
-                    <td>{calc['test_num']}</td>
-                    <td>{calc['site']}</td>
-                    <td>{calc['date']}</td>
-                    <td>{calc['depth_raw']}</td>
-                    <td>{calc['bom_baro']}</td>
-                    <td>{calc['logger_baro']}</td>
-                    <td>{adjustment_text}</td>
-                    <td>{calc['calculated']}</td>
-                    <td>{calc['expected']}</td>
-                    <td>{calc['difference']}</td>
-                    <td>{pass_fail}</td>
-                </tr>"""
-            html += '</table>'
+            if 'calculations' in data:
+                html += '<h4>Calculation Results:</h4>'
+                html += '<table class="calculation-table">'
+                html += '<tr><th>Test</th><th>Site</th><th>Raw (m)</th><th>BOM</th><th>Logger</th>'
+                html += '<th>Adj?</th><th>Calc</th><th>Expected</th><th>Diff</th><th>✓</th></tr>'
+                
+                for calc in data['calculations']:
+                    result = '<span class="pass">✓</span>' if calc['passed'] else '<span class="fail">✗</span>'
+                    adj_text = 'Yes' if calc['adjustment_applied'] else 'No'
+                    html += f"""<tr>
+                        <td>{calc['test_num']}</td>
+                        <td>{calc['site']}</td>
+                        <td>{calc['depth_raw']}</td>
+                        <td>{calc['bom_baro']}</td>
+                        <td>{calc['logger_baro']}</td>
+                        <td>{adj_text}</td>
+                        <td>{calc['calculated']}</td>
+                        <td>{calc['expected']}</td>
+                        <td>{calc['difference']}</td>
+                        <td>{result}</td>
+                    </tr>"""
+                html += '</table>'
         
         elif test_name == 'PSI to hPa Conversion':
-            html += '<h4>PSI to hPa Conversion Results:</h4>'
-            html += '<table class="calculation-table">'
-            html += '<tr><th>Test</th><th>Site</th><th>Date</th><th>PSI</th>'
-            html += '<th>Calculated hPa</th><th>Expected hPa</th><th>Difference</th><th>Factor</th><th>Result</th></tr>'
-            
-            for conv in data['conversions']:
-                pass_fail = '<span class="pass">✓</span>' if conv['passed'] else '<span class="fail">✗</span>'
-                html += f"""<tr>
-                    <td>{conv['test_num']}</td>
-                    <td>{conv['site']}</td>
-                    <td>{conv['date']}</td>
-                    <td>{conv['psi']}</td>
-                    <td>{conv['calculated_hpa']}</td>
-                    <td>{conv['expected_hpa']}</td>
-                    <td>{conv['difference']}</td>
-                    <td>{conv['factor']}</td>
-                    <td>{pass_fail}</td>
-                </tr>"""
-            html += '</table>'
+            if 'conversions' in data:
+                html += '<h4>Conversion Results:</h4>'
+                html += '<table class="calculation-table">'
+                html += '<tr><th>Test</th><th>Site</th><th>PSI</th><th>Calc hPa</th>'
+                html += '<th>Expected hPa</th><th>Diff</th><th>Factor</th><th>✓</th></tr>'
+                
+                for conv in data['conversions']:
+                    result = '<span class="pass">✓</span>' if conv['passed'] else '<span class="fail">✗</span>'
+                    html += f"""<tr>
+                        <td>{conv['test_num']}</td>
+                        <td>{conv['site']}</td>
+                        <td>{conv['psi']}</td>
+                        <td>{conv['calculated_hpa']}</td>
+                        <td>{conv['expected_hpa']}</td>
+                        <td>{conv['difference']}</td>
+                        <td>{conv['factor']}</td>
+                        <td>{result}</td>
+                    </tr>"""
+                html += '</table>'
         
         elif test_name == 'Statistical Anomaly Detection':
-            if data['depth_anomalies']:
-                html += '<h4>Depth Anomalies Detected:</h4>'
-                html += '<div class="anomaly">'
-                html += f"<p>Maximum change: {data['depth_stats']['max_change_pct']}%</p>"
-                html += '<table>'
-                html += '<tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
-                for anomaly in data['depth_anomalies']:
-                    html += f"""<tr>
-                        <td>{anomaly['site']}</td>
-                        <td>{anomaly['date']}</td>
-                        <td>{anomaly['value']}</td>
-                        <td>{anomaly['change_pct']}%</td>
-                    </tr>"""
-                html += '</table>'
-                html += '</div>'
+            if data.get('depth_anomalies'):
+                html += '<h4>Depth Anomalies:</h4><div class="anomaly">'
+                html += f"<p>Max change: {data['depth_stats']['max_change_pct']}%</p>"
+                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
+                for a in data['depth_anomalies']:
+                    html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td></tr>"
+                html += '</table></div>'
             
-            if data['pressure_anomalies']:
-                html += '<h4>Pressure Anomalies Detected:</h4>'
-                html += '<div class="anomaly">'
-                html += f"<p>Maximum change: {data['pressure_stats']['max_change_pct']}%</p>"
-                html += '<table>'
-                html += '<tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
-                for anomaly in data['pressure_anomalies']:
-                    html += f"""<tr>
-                        <td>{anomaly['site']}</td>
-                        <td>{anomaly['date']}</td>
-                        <td>{anomaly['value']}</td>
-                        <td>{anomaly['change_pct']}%</td>
-                    </tr>"""
-                html += '</table>'
-                html += '</div>'
+            if data.get('pressure_anomalies'):
+                html += '<h4>Pressure Anomalies:</h4><div class="anomaly">'
+                html += f"<p>Max change: {data['pressure_stats']['max_change_pct']}%</p>"
+                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
+                for a in data['pressure_anomalies']:
+                    html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td></tr>"
+                html += '</table></div>'
         
         return html
 
@@ -1481,22 +1529,19 @@ class TestEnvironmentalPipeline(unittest.TestCase):
 
 def run_tests(output_path='transformed_data/abTestsReport.html'):
     """
-    Execute tests, generate html report.
+    Execute tests and generate HTML report.
     
     Args:
-        output_path (str): Path where the HTML report should be saved. Defaults to 'transformed_data/abTestsReport.html'.
+        output_path (str): Path for the HTML report
     
     Returns:
-        bool: True if all tests passed, False otherwise
+        bool: True if all tests passed
     """
-    # Set the report filename before running tests
     TestEnvironmentalPipeline.report_filename = output_path
     
-    # Create test suite
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromTestCase(TestEnvironmentalPipeline)
     
-    # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     

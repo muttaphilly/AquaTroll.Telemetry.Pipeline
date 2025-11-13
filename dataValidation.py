@@ -1,22 +1,20 @@
 """
-dataValidation.py - Data validation and processing for environmental monitoring data
-
-This module processes raw logger data, validates it, and prepares it for database upload.
+This script processes raw logger data, validates it, and prepares it for database upload.
 
 CONFIGURATION:
-The script reads site configuration from SITES_CONFIG environment variable (JSON format).
-Each site should have the following fields:
+Gets the logger data from SITES_CONFIG environment variable (JSON format).
+Each site needs the following fields:
 
 - display_name: Human-readable site name
 - nav_option: Portal navigation option ID
 - depth_conversion_type: How to convert raw depth readings to metres
-    * 'metres' - Data already in metres, no conversion needed (e.g., SW5)
-    * 'default' - Convert from feet to metres (multiply by 0.3048) (most sites)
+    * 'metres' - Data already in metres, no conversion needed 
+    * 'default' - Convert from feet to metres (multiply by 0.3048)
     * 'divide_by_100' - Divide raw value by 100 to get metres
 - pressure_unit: 'hpa' for hectopascals or 'psi' for pounds per square inch
 - enabled: true/false to enable/disable processing
-- level_channel_id: Channel ID for level/depth data
-- baro_channel_id: Channel ID for barometric/pressure data
+- level_channel_id: Channel ID for depth data
+- baro_channel_id: Channel ID for barometric pressure data
 """
 
 import os
@@ -320,7 +318,7 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
             logger.warning(f"{site_id}: CSV file was empty")
             return create_placeholder_data(site_id, "CSV file was empty"), site_id, False
         
-        # Standardize columns
+        # Standardise columns
         df.columns = df.columns.str.strip()
         
         # Detect columns

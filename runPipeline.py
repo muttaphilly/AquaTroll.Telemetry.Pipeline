@@ -34,7 +34,7 @@ if __name__ == "__main__":
 # ----------------------------------------------------------------------
     # Step 3: Send emails
 # ----------------------------------------------------------------------    
-    # Validation and Verification email
+    # Validation and verification email
     if os.path.exists(output_file):
             recipients = autoEmail.send_validated_data_email(
                 output_file,

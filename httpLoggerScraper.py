@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Fixed HTTP Logger Scraper - Enhanced login and dual menu support
-Resolves login failures and handles both Tree Menu and Node Menu views
+HTTP Logger Scraper
+- Handles website authentication & both Tree Menu and Node Menu views.
+- Retrieves AquaTroll sensor depth and barometric data.
+- Creates csv file for each site & saves to data_downloads folder
 """
 
 import os
@@ -12,15 +14,13 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
-# Load environment variables
+# ------------ Load environment variables ------------
 load_dotenv()
 
-# Configuration
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 LOGIN_PATH = os.getenv("LOGIN_PATH", "/logon.aspx")
 LOGIN_URL = f"{BASE_URL}{LOGIN_PATH}"
@@ -28,7 +28,7 @@ LOGIN_USERNAME = os.getenv("LOGIN_USERNAME")
 LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD")
 PAUSE_SECONDS = int(os.getenv("PAUSE_SECONDS"))
 
-# Setup logging
+# ------------ Setup logging -------------------------
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -40,6 +40,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ------------ Meat & Potatoes -----------------------
 class UnidataHTTPScraper:
     """Scraper with dual tree/node menu support"""
     
@@ -597,7 +598,7 @@ def run(download_path):
     
     logger.info(f"Processing {len(sites)} enabled sites")
     
-    # Initialize scraper
+    # Initialise scraper
     scraper = UnidataHTTPScraper(BASE_URL, LOGIN_USERNAME, LOGIN_PASSWORD)
     
     # Login once
