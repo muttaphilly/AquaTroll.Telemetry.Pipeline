@@ -901,7 +901,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail("data_downloads directory not available - pipeline may not have run")
             return
         
-        csv_files = [f for f in os.listdir('data_downloads') if f.endswith('.csv') and f != 'weather_data.csv']
+        csv_files = [f for f in os.listdir('data_downloads') if f.endswith('.csv') and f != 'weather_data.csv' and 'baro' not in f.lower()]
         
         if not csv_files:
             self.record_result(
@@ -919,19 +919,36 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             df = pd.read_csv(test_file)
             
             # Required columns from httpLoggerScraper.py output
-            required_columns = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)']
+            # Note: Level column varies by site config (metres vs feet)
+            base_columns = ['Date', 'Time']
+            level_column_options = [
+                'Level(RAW)[Main Buffer] (ft)',
+                'Level in metres (m)'
+            ]
             
-            columns_present = all(col in df.columns for col in required_columns)
+            # Check base columns
+            base_present = all(col in df.columns for col in base_columns)
             
-            if columns_present:
+            # Check at least one level column variant exists
+            level_present = any(col in df.columns for col in level_column_options)
+            
+            if base_present and level_present:
+                # Find which level column is present
+                level_col = next((col for col in level_column_options if col in df.columns), None)
                 self.record_result(
                     "Logger Data Structure",
                     "Data Structure",
                     "PASS",
-                    f"Logger data has required columns: {', '.join(required_columns)}"
+                    f"Logger data has required columns: Date, Time, {level_col}"
                 )
             else:
-                missing = [col for col in required_columns if col not in df.columns]
+                missing = []
+                if not base_present:
+                    missing_base = [col for col in base_columns if col not in df.columns]
+                    missing.extend(missing_base)
+                if not level_present:
+                    missing.append(f"Level column (expected one of: {', '.join(level_column_options)})")
+                
                 self.record_result(
                     "Logger Data Structure",
                     "Data Structure",
@@ -939,7 +956,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     f"Missing required columns: {', '.join(missing)}"
                 )
                 self.fail("Required columns not found")
-                
+            
         except Exception as e:
             self.record_result(
                 "Logger Data Structure",
