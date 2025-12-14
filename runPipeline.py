@@ -28,7 +28,8 @@ if __name__ == "__main__":
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    dataValidation.consolidate_csv_files(input_folder, output_file, log_file)
+    # If want logging, pass in log_file as a third argument 
+    dataValidation.consolidate_csv_files(input_folder, output_file)
     testsAB.run_tests(output_path=html_report_path)
 
 # ----------------------------------------------------------------------

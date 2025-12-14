@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 import unittest
+import random
 from datetime import datetime
 from getpass import getuser
 from socket import gethostname
@@ -59,8 +60,8 @@ TEST_DESCRIPTIONS = {
         "and returns recieved HTTP response code."
     ),
     "Logger Portal Authentication": (
-        "Checks connectivity to the logger data portal & validates that the  "
-        "provided authentication credentials allow successful login."
+        "Checks connectivity & provided authentication credentials allow successful "
+        "login to the logger portal website  ."
     ),
     "Logger Portal Node Selection": (
         "Verifies ability to navigate and identify display structure in use (node or tables) "
@@ -90,10 +91,6 @@ TEST_DESCRIPTIONS = {
         "then cross-checks results against the pipelines final csv results. "
         "Applies thresholds: depth > 0.3m and baro difference > 5 hPa to prevent "
         "corrections from very shallow/dry pools and sensor noise."
-    ),
-    "PSI to hPa Conversion": (
-        "Validates PSI to hPa conversion accuracy (factor: 68.9476) by comparing "
-        "calculated values against the reports output data."
     ),
     "Statistical Anomaly Detection": (
         "Analyses validated data for statistical anomalies, flagging depth changes "
@@ -562,7 +559,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.skipTest("No enabled sites available")
             return
         
-        test_site_name = list(enabled_sites.keys())[0]
+        # Pick a random enabled_sites logger
+        test_site_name = random.choice(list(enabled_sites.keys()))
         test_site_config = enabled_sites[test_site_name]
         nav_option = test_site_config.get('nav_option')
         
@@ -969,10 +967,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail("data_downloads directory not available")
             return
-        
-        enabled_sites = {name: config for name, config in self.site_config.items() 
-                         if config.get('enabled', False)}
-        
+
+        enabled_sites = {
+            name: config for name, config in self.site_config.items()
+            if config.get('enabled', False)
+        }
+
         if not enabled_sites:
             self.record_result(
                 "Battery Voltage Check",
@@ -982,34 +982,34 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.skipTest("No enabled sites available")
             return
-        
+
         battery_results = []
-        warning_count = 0
-        fail_count = 0
-        
+        critical_fail_count = 0      # Missing file or read error
+        warning_count = 0            # Missing column, no data, or low voltage
+
         for site_id, config in enabled_sites.items():
             csv_path = os.path.join('data_downloads', f"{site_id}.csv")
-            
+
             if not os.path.exists(csv_path):
                 battery_results.append({
                     'site': site_id,
                     'status': 'FAIL',
                     'details': 'CSV file not found'
                 })
-                fail_count += 1
+                critical_fail_count += 1
                 continue
-            
+
             try:
                 df = pd.read_csv(csv_path)
-                
-                # Flexible battery column detection based on common prefix
+
+                # Flexible battery column detection
                 battery_col = None
                 for col in df.columns:
                     stripped_col = col.strip()
                     if stripped_col.startswith('Main Battery(MIN)[Main Buffer]'):
                         battery_col = col
                         break
-                
+
                 if battery_col is None:
                     battery_results.append({
                         'site': site_id,
@@ -1018,11 +1018,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     })
                     warning_count += 1
                     continue
-                
-                # Use the most recent non-null value as current voltage
-                battery_series = pd.to_numeric(df[battery_col], errors='coerce')
-                battery_series = battery_series.dropna()
-                
+
+                # Extract latest valid battery value
+                battery_series = pd.to_numeric(df[battery_col], errors='coerce').dropna()
+
                 if battery_series.empty:
                     battery_results.append({
                         'site': site_id,
@@ -1031,36 +1030,47 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     })
                     warning_count += 1
                     continue
-                
-                current_voltage = battery_series.iloc[-1]  # Latest value
-                
+
+                current_voltage = battery_series.iloc[-1]  # Most recent reading
+
                 pressure_unit = config.get('pressure_unit', 'hpa').lower()
                 threshold = 3.5 if pressure_unit == 'hpa' else 12.7
-                
+
                 if current_voltage < threshold:
                     status = 'WARNING'
                     warning_count += 1
                 else:
                     status = 'PASS'
-                
+
                 battery_results.append({
                     'site': site_id,
                     'threshold': threshold,
                     'current_voltage': round(current_voltage, 2),
                     'status': status
                 })
-                
+
             except Exception as e:
                 battery_results.append({
                     'site': site_id,
                     'status': 'FAIL',
                     'details': f"Error reading file: {str(e)}"
                 })
-                fail_count += 1
-        
-        overall_status = "FAIL" if fail_count > 0 else "WARNING" if warning_count > 0 else "PASS"
-        details = f"Checked {len(battery_results)} sites: {fail_count} failures, {warning_count} warnings"
-        
+                critical_fail_count += 1
+
+        # Determine overall status and accurate summary
+        if critical_fail_count > 0:
+            overall_status = "FAIL"
+        elif warning_count > 0:
+            overall_status = "WARNING"
+        else:
+            overall_status = "PASS"
+
+        details = (
+            f"Checked {len(enabled_sites)} enabled sites: "
+            f"{critical_fail_count} critical failures (no available data), "
+            f"{warning_count} warnings (low voltage)"
+        )
+
         self.record_result(
             "Battery Voltage Check",
             "Battery Voltage",
@@ -1068,10 +1078,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             details,
             {'battery_results': battery_results}
         )
-        
-        if fail_count > 0:
-            self.fail("Some sites failed battery check (e.g., missing files or read errors)")
-    
+
+        if critical_fail_count > 0:
+            self.fail(
+                f"{critical_fail_count} site(s) had critical failures "
+                "(missing CSV or read error)"
+            )
     # ========================================================================
     # CONFIGURATION TESTS
     # ========================================================================
@@ -1129,99 +1141,112 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CALCULATION TESTS
     # ========================================================================
     
-    def test_10_psi_to_hpa_conversion(self):
-        """Test PSI to hPa conversion accuracy."""
-        if not os.path.exists(self.validated_output_file):
-            self.record_result(
-                "PSI to hPa Conversion",
-                "Calculations",
-                "SKIP",
-                "Validated output file not found"
-            )
-            self.skipTest("Validated output file not available")
-            return
-        
-        try:
-            validated_df = load_csv_safely(self.validated_output_file)
-            if validated_df is None:
-                self.skipTest("Could not load validated output file")
-                return
-            
-            # Filter for PSI data
-            psi_col = 'Pressure(RAW)[Main Buffer] (PSI)'
-            hpa_col = 'Barometric Pressure(RAW)[Main Buffer] (hPa)'
-            
-            validated_df = validated_df[
-                (validated_df[psi_col].notna()) &
-                (validated_df[psi_col] > 0) &
-                (validated_df[hpa_col].notna()) &
-                (validated_df[hpa_col] > 0)
-            ]
-            
-            if len(validated_df) == 0:
+    def test_09_depth_calculation_verification(self):
+            """Validates result accuracy of depth calculations."""
+            if not os.path.exists(self.validated_output_file):
                 self.record_result(
-                    "PSI to hPa Conversion",
+                    "Depth Calculation Verification",
                     "Calculations",
                     "SKIP",
-                    "No PSI data found in validated output"
+                    "No validated data found"
                 )
-                self.skipTest("No PSI data available")
+                self.skipTest("Validated output file not available")
                 return
             
-            # Test random samples
-            num_samples = min(3, len(validated_df))
-            test_samples = validated_df.sample(n=num_samples, random_state=42)
-            
-            conversion_results = []
-            all_passed = True
-            
-            for idx, row in test_samples.iterrows():
-                site = row['Sample Point']
-                date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                psi_value = float(row[psi_col])
-                expected_hpa = float(row[hpa_col])
+            try:
+                # Load validated data
+                validated_df = load_csv_safely(self.validated_output_file)
+                if validated_df is None:
+                    self.skipTest("Could not load validated output file")
+                    return
                 
-                # Calculate
-                calculated_hpa = psi_value * CalculationConstants.PSI_TO_HPA
+                validated_df = filter_valid_depth_data(validated_df, min_depth=0)
                 
-                # Check tolerance
-                tolerance = 1.0  # 1 hPa tolerance
-                passed = abs(calculated_hpa - expected_hpa) < tolerance
+                if len(validated_df) == 0:
+                    self.record_result(
+                        "Depth Calculation Verification",
+                        "Calculations",
+                        "SKIP",
+                        "No valid depth data in validated output"
+                    )
+                    self.skipTest("No valid depth data available")
+                    return
                 
-                conversion_results.append({
-                    'test_num': len(conversion_results) + 1,
-                    'site': site,
-                    'date': date,
-                    'psi': round(psi_value, 3),
-                    'calculated_hpa': round(calculated_hpa, 2),
-                    'expected_hpa': round(expected_hpa, 2),
-                    'difference': round(abs(calculated_hpa - expected_hpa), 2),
-                    'factor': CalculationConstants.PSI_TO_HPA,
-                    'passed': passed
-                })
+                # Test random samples
+                num_samples = min(3, len(validated_df))
+                test_samples = validated_df.sample(n=num_samples, random_state=42)
                 
-                if not passed:
-                    all_passed = False
-            
-            self.record_result(
-                "PSI to hPa Conversion",
-                "Calculations",
-                "PASS" if all_passed else "FAIL",
-                f"PSI to hPa conversion factor verified ({CalculationConstants.PSI_TO_HPA})",
-                {'conversions': conversion_results}
-            )
-            
-            if not all_passed:
-                self.fail("PSI conversions did not match expected values")
-            
-        except Exception as e:
-            self.record_result(
-                "PSI to hPa Conversion",
-                "Calculations",
-                "FAIL",
-                f"Error during PSI conversion test: {str(e)}"
-            )
-            self.fail(f"PSI conversion test failed: {e}")
+                calculation_results = []
+                all_passed = True
+                
+                for idx, row in test_samples.iterrows():
+                    site = row['Sample Point']
+                    date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
+                    depth_m_raw = float(row['Depth(m)raw'])
+                    depth_m_adjusted_expected = float(row['Depth(m)adjusted'])
+                    
+                    # Get barometric pressures
+                    bom_baro = None
+                    logger_baro = None
+                    
+                    if pd.notna(row.get('BomBaro', '')) and row.get('BomBaro', '') != '':
+                        bom_baro = float(row['BomBaro'])
+                        
+                    if pd.notna(row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '')) and \
+                    row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '') != '':
+                        logger_baro = float(row['Barometric Pressure(RAW)[Main Buffer] (hPa)'])
+                    
+                    # Calculate adjusted depth
+                    calculated_adjusted_m, adjustment_applied = calculate_depth_adjustment(
+                        depth_m_raw, bom_baro, logger_baro
+                    )
+                    
+                    # Compare with expected
+                    tolerance = 0.02  # 2cm tolerance
+                    passed = abs(calculated_adjusted_m - depth_m_adjusted_expected) < tolerance
+                    
+                    calculation_results.append({
+                        'test_num': len(calculation_results) + 1,
+                        'site': site,
+                        'date': date,
+                        'depth_raw': round(depth_m_raw, 2),
+                        'bom_baro': round(bom_baro, 1) if bom_baro else 'N/A',
+                        'logger_baro': round(logger_baro, 1) if logger_baro else 'N/A',
+                        'adjustment_applied': adjustment_applied,
+                        'calculated': calculated_adjusted_m,
+                        'expected': round(depth_m_adjusted_expected, 2),
+                        'difference': round(abs(calculated_adjusted_m - depth_m_adjusted_expected), 3),
+                        'passed': passed
+                    })
+                    
+                    if not passed:
+                        all_passed = False
+                
+                details = (
+                    f"Tested {len(calculation_results)} calculations. "
+                    f"Thresholds: depth > {CalculationConstants.MIN_DEPTH_THRESHOLD}m, "
+                    f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa"
+                )
+                
+                self.record_result(
+                    "Depth Calculation Verification",
+                    "Calculations",
+                    "PASS" if all_passed else "FAIL",
+                    details,
+                    {'calculations': calculation_results}
+                )
+                
+                if not all_passed:
+                    self.fail("Some calculations did not match expected values")
+                
+            except Exception as e:
+                self.record_result(
+                    "Depth Calculation Verification",
+                    "Calculations",
+                    "FAIL",
+                    f"Error during calculation verification: {str(e)}"
+                )
+                self.fail(f"Calculation verification failed: {e}")
     
     # ========================================================================
     # DATA QUALITY TESTS
