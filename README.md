@@ -37,6 +37,7 @@ The main script, `runPipeline.py`, orchestrates the following steps:
 * Retrieves external barometric data (by calling `weatherStation.py`).
 * Merges external weather data with the logger data based on date.
 * Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
+* Monitors logger units battery voltage (latest reading) against site-specific thresholds.
 * Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & abTests.html) saved in `transformed_data/`.
 4. **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients.
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
@@ -55,6 +56,7 @@ To maintain data integrity, the project includes A/B tests implemented in `tests
 - Calculation accuracy
 - Site Availability
 - Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
+- Battery voltage health (low voltage warnings)
 
 The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in the transformed_data folder.
 
@@ -100,7 +102,8 @@ The tests generate an HTML report (`abTestsReport.html`) summarising results. It
     VALIDATION_EMAIL_SUBJECT="Logger Validation Report"
     DATABASE_EMAIL_SUBJECT="{month} Depth Data"
     DATABASE_EMAIL_BODY="For Upload To Database: {filename}"
-    SITES_CONFIG='{"SITE_001": {"display_name": "Site 1","nav_option": "12345","depth_conversion_type": "default","pressure_unit": "hpa","enabled": true}}
+    SITES_CONFIG='{"SITE_001": {"display_name": "Site 1", "nav_option": "12345", "depth_conversion_type": "default", "pressure_unit": "hpa", "enabled": true, "level_channel_id": 123456, "baro_channel_id": 123457, "battery_channel_id": 123458}}'
+
   **Configuration Notes**
     
     *Site ID (the key):*
