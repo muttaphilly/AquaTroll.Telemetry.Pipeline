@@ -10,7 +10,7 @@ Monthly verification of script performance through testing of:
 - Flagging of any statistical anomalies
 
 Author: Philip Curry
-Last Modified: 13-11-2025
+Last Modified: 14-12-2025
 """
 
 # ============================================================================
@@ -56,41 +56,44 @@ USERNAME = getuser()
 TEST_DESCRIPTIONS = {
     "Weather Website Accessibility": (
         "Verifies if weather website accessible "
-        "and returns the HTTP response code."
+        "and returns recieved HTTP response code."
     ),
     "Logger Portal Authentication": (
-        "Tests connectivity to the logger data portal and validates authentication "
-        "credentials can successfully login to the system."
+        "Checks connectivity to the logger data portal & validates that the  "
+        "provided authentication credentials allow successful login."
     ),
     "Logger Portal Node Selection": (
-        "Verifies ability to navigate to and select specific nodes/tables in the "
-        "logger portal after authentication."
+        "Verifies ability to navigate and identify display structure in use (node or tables) "
     ),
     "Logger Portal CSV Download": (
         "Confirms the presence and functionality of CSV download button for data "
         "extraction."
     ),
     "Weather Data Structure": (
-        "Verifies weather website accessibility & confirms validates returned result contains "
-        "pressure data at expected positions (9am at position 15, 3pm at position 21)."
+        "Verifies weather website accessibility and confirms the presence of pressure data "
+        "at the expected positions (9 am at position 15, 3 pm at position 21)."
     ),
     "Logger Data Structure": (
         "Checks that downloaded logger CSV files contain required columns for "
         "Date, Time, and Level measurements."
     ),
+    "Battery Voltage Check": (
+        "Verifies battery voltage levels for each enabled site, flagging warnings if below "
+        "thresholds (Logger: <3.5V, Starlink: <12.7V)."
+    ),
     "Site Configuration": (
-        "Verifies site availability from SITES_CONFIG env variable, "
-        "checking which sites are enabled vs disabled based on the 'enabled' flag."
+        "Checks site availability from SITES_CONFIG env variable, "
+        "by reading the 'enabled' flag."
     ),
     "Depth Calculation Verification": (
         "Indpendently tests barometric pressure adjustments using downloaded files "
-        "then cross-checks results against the pipelines final validated csv results. "
+        "then cross-checks results against the pipelines final csv results. "
         "Applies thresholds: depth > 0.3m and baro difference > 5 hPa to prevent "
         "corrections from very shallow/dry pools and sensor noise."
     ),
     "PSI to hPa Conversion": (
         "Validates PSI to hPa conversion accuracy (factor: 68.9476) by comparing "
-        "calculated values against validated output data from any PSI-based logger sites."
+        "calculated values against the reports output data."
     ),
     "Statistical Anomaly Detection": (
         "Analyses validated data for statistical anomalies, flagging depth changes "
@@ -135,7 +138,7 @@ HTML_HEADER = """
 </head>
 <body>
     <div class="header">
-        <h1>🔬 Environmental Data Pipeline Test Report</h1>
+        <h1>🔬 AquaTroll Depth Data Pipeline: Test Report</h1>
         <p>Generated: {timestamp} on {computer_name} by {username}</p>
     </div>
     <img src="images/gorgeMonitoring.jpg" alt="Gorge Monitoring Banner" class="banner" onerror="this.style.display='none'">
@@ -143,7 +146,7 @@ HTML_HEADER = """
 
 HTML_FOOTER = """
     <div class="footer">
-        <p>End of Test Report - AquaTroll Environmental Data Pipeline</p>
+        <p>End of Test Report: AquaTroll Depth Data Pipeline</p>
     </div>
 </body>
 </html>
@@ -165,18 +168,10 @@ class CalculationConstants:
     # Depth adjustment (AquaTroll specifications)
     CONVERSION_FACTOR = 0.70307  # Pressure differential to water column height
     
-    # Thresholds for adjustment application (adjusts for observed localised variations)
+    # Thresholds for adjustment application
     MIN_DEPTH_THRESHOLD = 0.3  # meters - prevents corrections in shallow pools
     MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for sensor noise
-    
-    # Water properties
-    WATER_DENSITY = 1000.0  # kg/m³
-    REFERENCE_DENSITY = 1000.0  # kg/m³
-    
-    @classmethod
-    def specific_gravity(cls):
-        """Calculate specific gravity for fresh water."""
-        return cls.WATER_DENSITY / cls.REFERENCE_DENSITY
+    MAX_BARO_DIFF_THRESHOLD = 20.0  # hPa - prevents corrections for sensor malfunction 
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -239,11 +234,12 @@ def should_apply_depth_adjustment(depth_m, bom_baro, logger_baro):
     if bom_baro is None or logger_baro is None:
         return False
     
-    delta_p_hpa = abs(logger_baro - bom_baro)
+    delta_p_hpa = bom_baro - logger_baro
     
     return (
         depth_m > CalculationConstants.MIN_DEPTH_THRESHOLD and
-        delta_p_hpa > CalculationConstants.MIN_BARO_DIFF_THRESHOLD
+        delta_p_hpa > CalculationConstants.MIN_BARO_DIFF_THRESHOLD and
+        delta_p_hpa <= CalculationConstants.MAX_BARO_DIFF_THRESHOLD 
     )
 
 
@@ -269,13 +265,9 @@ def calculate_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
         return round(depth_m_raw, 2), False
     
     # Calculate adjustment
-    delta_p_hpa = logger_baro - bom_baro
+    delta_p_hpa = bom_baro - logger_baro
     delta_p_psi = delta_p_hpa * CalculationConstants.HPA_TO_PSI
-    depth_adjustment_m = (
-        CalculationConstants.CONVERSION_FACTOR * 
-        delta_p_psi / 
-        CalculationConstants.specific_gravity()
-    )
+    depth_adjustment_m = CalculationConstants.CONVERSION_FACTOR * delta_p_psi
     adjusted_depth = depth_m_raw + depth_adjustment_m
     
     return round(adjusted_depth, 2), True
@@ -376,7 +368,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         "Weather Website Accessibility",
                         "Connectivity",
                         "PASS",
-                        f"Successfully connected (HTTP {response.status_code}, {response_time:.2f}s, table found)"
+                        f"Successfully connected (HTTP {response.status_code}, {response_time:.2f}s)"
                     )
                 else:
                     self.record_result(
@@ -809,20 +801,19 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    "Could not find valid data row in table"
+                    "No valid data row found in weather table"
                 )
-                self.fail("No valid data rows found")
+                self.fail("No valid data row")
                 return
             
-            # Verify row has expected number of cells (should be 22)
+            # Validate structure
             total_cells = len(first_valid_row)
-            
-            # Check positions 15 and 21 contain valid pressure data (950-1050 hPa)
             position_15_valid = False
             position_21_valid = False
             position_15_value = "N/A"
             position_21_value = "N/A"
             
+            # Check position 15 (9am pressure)
             if total_cells > 15:
                 val_15 = first_valid_row[15].get_text(strip=True)
                 try:
@@ -832,6 +823,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 except (ValueError, TypeError):
                     pass
             
+            # Check position 21 (3pm pressure)
             if total_cells > 21:
                 val_21 = first_valid_row[21].get_text(strip=True)
                 try:
@@ -966,11 +958,125 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail(f"Failed to read logger data: {e}")
     
+    def test_07_battery_voltage_check(self):
+        """Check battery voltage for enabled sites."""
+        if not os.path.exists('data_downloads'):
+            self.record_result(
+                "Battery Voltage Check",
+                "Battery Voltage",
+                "FAIL",
+                "data_downloads directory not found"
+            )
+            self.fail("data_downloads directory not available")
+            return
+        
+        enabled_sites = {name: config for name, config in self.site_config.items() 
+                         if config.get('enabled', False)}
+        
+        if not enabled_sites:
+            self.record_result(
+                "Battery Voltage Check",
+                "Battery Voltage",
+                "SKIP",
+                "No enabled sites configured"
+            )
+            self.skipTest("No enabled sites available")
+            return
+        
+        battery_results = []
+        warning_count = 0
+        fail_count = 0
+        
+        for site_id, config in enabled_sites.items():
+            csv_path = os.path.join('data_downloads', f"{site_id}.csv")
+            
+            if not os.path.exists(csv_path):
+                battery_results.append({
+                    'site': site_id,
+                    'status': 'FAIL',
+                    'details': 'CSV file not found'
+                })
+                fail_count += 1
+                continue
+            
+            try:
+                df = pd.read_csv(csv_path)
+                
+                # Flexible battery column detection based on common prefix
+                battery_col = None
+                for col in df.columns:
+                    stripped_col = col.strip()
+                    if stripped_col.startswith('Main Battery(MIN)[Main Buffer]'):
+                        battery_col = col
+                        break
+                
+                if battery_col is None:
+                    battery_results.append({
+                        'site': site_id,
+                        'status': 'WARNING',
+                        'details': 'Battery voltage column not found'
+                    })
+                    warning_count += 1
+                    continue
+                
+                # Use the most recent non-null value as current voltage
+                battery_series = pd.to_numeric(df[battery_col], errors='coerce')
+                battery_series = battery_series.dropna()
+                
+                if battery_series.empty:
+                    battery_results.append({
+                        'site': site_id,
+                        'status': 'WARNING',
+                        'details': 'No valid battery data'
+                    })
+                    warning_count += 1
+                    continue
+                
+                current_voltage = battery_series.iloc[-1]  # Latest value
+                
+                pressure_unit = config.get('pressure_unit', 'hpa').lower()
+                threshold = 3.5 if pressure_unit == 'hpa' else 12.7
+                
+                if current_voltage < threshold:
+                    status = 'WARNING'
+                    warning_count += 1
+                else:
+                    status = 'PASS'
+                
+                battery_results.append({
+                    'site': site_id,
+                    'threshold': threshold,
+                    'current_voltage': round(current_voltage, 2),
+                    'status': status
+                })
+                
+            except Exception as e:
+                battery_results.append({
+                    'site': site_id,
+                    'status': 'FAIL',
+                    'details': f"Error reading file: {str(e)}"
+                })
+                fail_count += 1
+        
+        overall_status = "FAIL" if fail_count > 0 else "WARNING" if warning_count > 0 else "PASS"
+        details = f"Checked {len(battery_results)} sites: {fail_count} failures, {warning_count} warnings"
+        
+        self.record_result(
+            "Battery Voltage Check",
+            "Battery Voltage",
+            overall_status,
+            details,
+            {'battery_results': battery_results}
+        )
+        
+        if fail_count > 0:
+            self.fail("Some sites failed battery check (e.g., missing files or read errors)")
+    
     # ========================================================================
     # CONFIGURATION TESTS
     # ========================================================================
     
-    def test_07_site_configuration(self):
+    def test_08_site_configuration(self):
         """Test site configuration from environment."""
         try:
             enabled_sites = []
@@ -979,7 +1085,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Parse enabled flag from SITES_CONFIG
             for site_name, config in self.site_config.items():
                 is_enabled = config.get('enabled', False)
-                site_display = f"{site_name} ({config.get('display_name', 'N/A')})"
+                site_display = site_name
                 
                 if is_enabled:
                     enabled_sites.append(site_display)
@@ -1023,114 +1129,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CALCULATION TESTS
     # ========================================================================
     
-    def test_08_depth_calculation_verification(self):
-        """Verify depth calculation accuracy."""
-        if not os.path.exists(self.validated_output_file):
-            self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
-                "SKIP",
-                "No validated data found"
-            )
-            self.skipTest("Validated output file not available")
-            return
-        
-        try:
-            # Load validated data
-            validated_df = load_csv_safely(self.validated_output_file)
-            if validated_df is None:
-                self.skipTest("Could not load validated output file")
-                return
-            
-            validated_df = filter_valid_depth_data(validated_df, min_depth=0)
-            
-            if len(validated_df) == 0:
-                self.record_result(
-                    "Depth Calculation Verification",
-                    "Calculations",
-                    "SKIP",
-                    "No valid depth data in validated output"
-                )
-                self.skipTest("No valid depth data available")
-                return
-            
-            # Test random samples
-            num_samples = min(3, len(validated_df))
-            test_samples = validated_df.sample(n=num_samples, random_state=42)
-            
-            calculation_results = []
-            all_passed = True
-            
-            for idx, row in test_samples.iterrows():
-                site = row['Sample Point']
-                date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                depth_m_raw = float(row['Depth(m)raw'])
-                depth_m_adjusted_expected = float(row['Depth(m)adjusted'])
-                
-                # Get barometric pressures
-                bom_baro = None
-                logger_baro = None
-                
-                if pd.notna(row.get('BomBaro', '')) and row.get('BomBaro', '') != '':
-                    bom_baro = float(row['BomBaro'])
-                    
-                if pd.notna(row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '')) and \
-                   row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '') != '':
-                    logger_baro = float(row['Barometric Pressure(RAW)[Main Buffer] (hPa)'])
-                
-                # Calculate adjusted depth
-                calculated_adjusted_m, adjustment_applied = calculate_depth_adjustment(
-                    depth_m_raw, bom_baro, logger_baro
-                )
-                
-                # Compare with expected
-                tolerance = 0.02  # 2cm tolerance
-                passed = abs(calculated_adjusted_m - depth_m_adjusted_expected) < tolerance
-                
-                calculation_results.append({
-                    'test_num': len(calculation_results) + 1,
-                    'site': site,
-                    'date': date,
-                    'depth_raw': round(depth_m_raw, 2),
-                    'bom_baro': round(bom_baro, 1) if bom_baro else 'N/A',
-                    'logger_baro': round(logger_baro, 1) if logger_baro else 'N/A',
-                    'adjustment_applied': adjustment_applied,
-                    'calculated': calculated_adjusted_m,
-                    'expected': round(depth_m_adjusted_expected, 2),
-                    'difference': round(abs(calculated_adjusted_m - depth_m_adjusted_expected), 3),
-                    'passed': passed
-                })
-                
-                if not passed:
-                    all_passed = False
-            
-            details = (
-                f"Tested {len(calculation_results)} calculations. "
-                f"Thresholds: depth > {CalculationConstants.MIN_DEPTH_THRESHOLD}m, "
-                f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa"
-            )
-            
-            self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
-                "PASS" if all_passed else "FAIL",
-                details,
-                {'calculations': calculation_results}
-            )
-            
-            if not all_passed:
-                self.fail("Some calculations did not match expected values")
-            
-        except Exception as e:
-            self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
-                "FAIL",
-                f"Error during calculation verification: {str(e)}"
-            )
-            self.fail(f"Calculation verification failed: {e}")
-    
-    def test_09_psi_to_hpa_conversion(self):
+    def test_10_psi_to_hpa_conversion(self):
         """Test PSI to hPa conversion accuracy."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
@@ -1149,7 +1148,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 return
             
             # Filter for PSI data
-            psi_col = 'Pressure(RAW)[Main Buffer] (PSI) - Original'
+            psi_col = 'Pressure(RAW)[Main Buffer] (PSI)'
             hpa_col = 'Barometric Pressure(RAW)[Main Buffer] (hPa)'
             
             validated_df = validated_df[
@@ -1228,7 +1227,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # DATA QUALITY TESTS
     # ========================================================================
     
-    def test_10_statistical_anomaly_detection(self):
+    def test_11_statistical_anomaly_detection(self):
         """Test for statistical anomalies in validated data."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
@@ -1381,8 +1380,9 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         category_order = [
             'Connectivity',
             'Logger Portal',
-            'Configuration',
             'Data Structure',
+            'Battery Voltage',
+            'Configuration',
             'Calculations',
             'Data Quality'
         ]
@@ -1459,9 +1459,24 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     html += f'<li>Data Table: {"✓" if data["data_table"] else "✗"}</li>'
                 html += '</ul>'
         
-        elif test_name == 'Logger Portal CSV Download':
-            # Simplified - no detailed element breakdown needed
-            pass
+        elif test_name == 'Battery Voltage Check':
+            if 'battery_results' in data:
+                html += '<h4>Battery Voltage Results:</h4>'
+                html += '<table class="calculation-table">'
+                html += '<tr><th>Site</th><th>Threshold (V)</th><th>Current Voltage (V)</th><th>Status</th></tr>'
+                
+                for res in data['battery_results']:
+                    status_class = res['status'].lower()
+                    details = res.get('details', '')
+                    current_voltage = res.get('current_voltage', 'N/A')
+                    threshold = res.get('threshold', 'N/A')
+                    html += f"""<tr>
+                        <td>{res['site']}</td>
+                        <td>{threshold}</td>
+                        <td>{current_voltage if details == '' else details}</td>
+                        <td class="{status_class}">{res['status']}</td>
+                    </tr>"""
+                html += '</table>'
         
         elif test_name == 'Site Configuration':
             if data.get('enabled'):

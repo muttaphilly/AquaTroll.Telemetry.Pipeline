@@ -2,7 +2,7 @@
 """
 HTTP Logger Scraper
 - Handles website authentication & both Tree Menu and Node Menu views.
-- Retrieves AquaTroll sensor depth and barometric data.
+- Retrieves AquaTroll sensor depth, barometric data, and battery voltage.
 - Creates csv file for each site & saves to data_downloads folder
 """
 
@@ -150,7 +150,7 @@ class UnidataHTTPScraper:
                 # Step 3: Add our credentials
                 form_data['txtUsername'] = self.username
                 form_data['txtPassword'] = self.password
-                form_data['btnLogon'] = 'Login'  # Corrected button name from 'btnLogin' to 'btnLogon'
+                form_data['btnLogon'] = 'Login'
                 
                 # Remove any conflicting submit buttons
                 for key in list(form_data.keys()):
@@ -359,7 +359,7 @@ class UnidataHTTPScraper:
                     timeout=30
                 )
                 response.raise_for_status()  # Raise on 4xx/5xx
-                # Check if we're now in table mode
+                # Check if now in table mode
                 if 'TABLE_DISPLAY' in response.text and 'btnExportToCSV' in response.text:
                     logger.info("  ✅ Successfully switched to table mode")
                     return response.text
@@ -520,7 +520,7 @@ def load_sites_config():
         logger.error(f"Failed to parse SITES_CONFIG: {e}")
         return {}
 
-
+# grab JSON from .env
 def get_enabled_sites():
     """Get list of enabled sites with channel IDs"""
     all_sites = load_sites_config()
@@ -533,29 +533,32 @@ def get_enabled_sites():
                 'display_name': config.get('display_name', site_id),
                 'level_channel_id': config.get('level_channel_id'),
                 'baro_channel_id': config.get('baro_channel_id'),
+                'battery_channel_id': config.get('battery_channel_id'),
                 'pressure_unit': config.get('pressure_unit', 'hpa')
             }
             
-            if site_info['level_channel_id'] and site_info['baro_channel_id']:
+            if site_info['level_channel_id'] and site_info['baro_channel_id'] and site_info['battery_channel_id']:
                 enabled_sites.append(site_info)
             else:
                 logger.warning(f"Site {site_id} missing channel IDs, skipping")
     
     return enabled_sites
 
-
-def merge_csv_files(level_path, baro_path, site_id):
-    """Merge level and barometric data CSVs"""
+def merge_csv_files(level_path, baro_path, battery_path, site_id):
+    """Merge level, barometric, and battery data CSVs"""
     try:
         level_df = pd.read_csv(level_path)
         baro_df = pd.read_csv(baro_path)
+        battery_df = pd.read_csv(battery_path)
         
         logger.info(f"  Level data: {len(level_df)} rows, columns: {list(level_df.columns)[:5]}...")
         logger.info(f"  Baro data: {len(baro_df)} rows, columns: {list(baro_df.columns)[:5]}...")
+        logger.info(f"  Battery data: {len(battery_df)} rows, columns: {list(battery_df.columns)[:5]}...")
         
         # Merge on Date and Time columns
         if 'Date' in level_df.columns and 'Time' in level_df.columns:
             merged_df = pd.merge(level_df, baro_df, on=['Date', 'Time'], how='left')
+            merged_df = pd.merge(merged_df, battery_df, on=['Date', 'Time'], how='left')
             
             # Save merged data
             merged_df.to_csv(level_path, index=False)
@@ -630,6 +633,7 @@ def run(download_path):
         logger.info("="*70)
         logger.info(f"  Level channel: {site['level_channel_id']}")
         logger.info(f"  Baro channel: {site['baro_channel_id']}")
+        logger.info(f"  Battery channel: {site['battery_channel_id']}")
         
         try:
             # Download Level data
@@ -653,14 +657,25 @@ def run(download_path):
                 failed += 1
                 continue
             
+            # Download Battery Voltage data
+            logger.info("🔋 Downloading Battery Voltage data...")
+            battery_path = os.path.join(download_path, f"battery{site_id}.csv")
+            battery_ok = scraper.download_channel_data(site['battery_channel_id'], battery_path)
+            
+            if not battery_ok:
+                logger.error(f"Failed to download Battery Voltage data for {site_id}")
+                failed += 1
+                continue
+            
             # Merge csv files
             logger.info("🔀 Merging data files...")
-            merge_csv_files(level_path, baro_path, site_id)
+            merge_csv_files(level_path, baro_path, battery_path, site_id)
             
-            # And wax the now not needed baro file
-            if os.path.exists(baro_path):
-                os.remove(baro_path)
-                logger.info(f"  Cleaned up temporary file: {os.path.basename(baro_path)}")
+            # Clean up temporary files
+            for temp_path in [baro_path, battery_path]:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    logger.info(f"  Cleaned up temporary file: {os.path.basename(temp_path)}")
             
             logger.info(f"✅ Successfully processed {display_name}")
             successful += 1

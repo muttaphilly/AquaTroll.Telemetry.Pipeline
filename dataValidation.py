@@ -374,17 +374,20 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
         # Handle pressure
         if pressure_column:
             if pressure_unit.lower() == 'psi':
-                df['Pressure(RAW)[Main Buffer] (PSI) - Original'] = pd.to_numeric(df[pressure_column], errors='coerce')
-                df['Barometric Pressure(RAW)[Main Buffer] (hPa)'] = df['Pressure(RAW)[Main Buffer] (PSI) - Original'] * 68.9476
+                # Keep PSI
+                df['Pressure(RAW)[Main Buffer] (PSI)'] = pd.to_numeric(df[pressure_column], errors='coerce')
+                # Also create hPa column for display/comparison with BOM
+                df['Barometric Pressure(RAW)[Main Buffer] (hPa)'] = df['Pressure(RAW)[Main Buffer] (PSI)'] * 68.9476
             else:
+                # Already in hPa
                 df['Barometric Pressure(RAW)[Main Buffer] (hPa)'] = pd.to_numeric(df[pressure_column], errors='coerce')
         else:
             logger.warning(f"{site_id}: No pressure column found")
             df['Barometric Pressure(RAW)[Main Buffer] (hPa)'] = np.nan
-        
+
         # Set sample point
         df['Sample Point'] = site_id
-        
+
         # Keep only necessary columns
         keep_cols = [
             'Sample Point',
@@ -392,9 +395,10 @@ def process_site_file(file_path: str, logger: logging.Logger) -> Tuple[Optional[
             'Depth(m)raw',
             'Barometric Pressure(RAW)[Main Buffer] (hPa)'
         ]
-        if 'Pressure(RAW)[Main Buffer] (PSI) - Original' in df.columns:
-            keep_cols.append('Pressure(RAW)[Main Buffer] (PSI) - Original')
-        
+        # Keep PSI column if it exists
+        if 'Pressure(RAW)[Main Buffer] (PSI)' in df.columns:
+            keep_cols.append('Pressure(RAW)[Main Buffer] (PSI)')
+
         df = df[keep_cols]
         
         # Check for valid data
@@ -421,27 +425,95 @@ def calculate_adjusted_depth(
     reference_density: float = 1000.0
 ) -> pd.DataFrame:
     """
-    Calculate adjusted depth using formula.
+    Calculate adjusted depth using AquaTroll drift correction formula.
+    
+    PURPOSE:
+    Corrects logger depth readings for barometric pressure sensor drift by comparing 
+    the logger's pressure sensor against a reference weather station.
+    
+    METHOD:
+    Uses the AquaTroll manufacturer's formula (conversion factor 0.70307) to convert
+    pressure drift (hPa) into depth correction (meters). The correction is added to 
+    the raw depth because when a sensor reads low pressure, there is more water above 
+    it than the sensor reports.
+    
+    THRESHOLDS (prevents corrections in unreliable conditions):
+    - Drift ≤ 5 hPa: No adjustment (sensor noise / normal variation)
+    - 5 < Drift ≤ 20 hPa: Apply correction (acceptable range of sensor drift)
+    - 20 < Drift ≤ 50 hPa: No adjustment, flag as excessive drift (sensor requires calibration)
+    - Drift > 50 hPa: No adjustment (investigate replacing the sensor)
+    - Depth ≤ 0.3m: No adjustment (shallow water, unreliable readings)
+    
+    AQUATROLL FORMULA:
+    pressure_diff_psi = (BOM_pressure - Logger_pressure) × 0.0145038
+    depth_correction_m = 0.70307 × pressure_diff_psi
+    adjusted_depth = raw_depth + depth_correction_m
+    
+    Args:
+        df: DataFrame containing raw depth and pressure data
+        water_density: Water density in kg/m³ (default 1000 for freshwater)
+        logger: Logger instance for recording processing info
+        
+    Returns:
+        DataFrame with 'Depth(m)adjusted' column populated and appropriate comments
     """
     df_copy = df.copy()
     df_copy['Depth(m)adjusted'] = np.nan
     
-    # Valid rows mask for adjustment
+    # AquaTroll constants
+    CONVERSION_FACTOR = 0.70307  # Pressure differential to water column height
+    HPA_TO_PSI = 0.0145038
+    
+    # Helper function to calculate absolute pressure difference
+    def get_pressure_diff(row):
+        """Calculate pressure difference in hPa between weather station & logger"""
+        if pd.notna(row.get('Pressure(RAW)[Main Buffer] (PSI)')):
+            # PSI site: convert BOM to PSI, compare, convert back to hPa for threshold
+            bom_psi = row['BomBaro'] * HPA_TO_PSI
+            logger_psi = row['Pressure(RAW)[Main Buffer] (PSI)']
+            diff_psi = abs(bom_psi - logger_psi)
+            return diff_psi / HPA_TO_PSI  # Convert back to hPa for threshold comparison
+        elif pd.notna(row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)')):
+            # hPa site: direct comparison
+            return abs(row['BomBaro'] - row['Barometric Pressure(RAW)[Main Buffer] (hPa)'])
+        else:
+            return np.nan
+    
+    # Apply to dataframe to calculate pressure differences
+    df_copy['pressure_diff_hpa'] = df_copy.apply(get_pressure_diff, axis=1)
+    
+    # Valid rows mask for adjustment (5 < diff <= 20 hPa)
     valid_mask = (
         df_copy['Depth(m)raw'].notna() & 
         (df_copy['Depth(m)raw'] > 0.3) &
-        df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].notna() &
         df_copy['BomBaro'].notna() &
-        (abs(df_copy['BomBaro'] - df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)']) <= 50) &
-        (abs(df_copy['BomBaro'] - df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)']) > 5)
+        df_copy['pressure_diff_hpa'].notna() &
+        (df_copy['pressure_diff_hpa'] > 5) &
+        (df_copy['pressure_diff_hpa'] <= 20)
     )
     
     if valid_mask.any():
         valid_df = df_copy[valid_mask]
         
-        pressure_diff = valid_df['BomBaro'] - valid_df['Barometric Pressure(RAW)[Main Buffer] (hPa)']
-        adjusted_depth = (pressure_diff * 100) / (9.81 * water_density) * (reference_density / 1000)
+        # Check for PSI data. If so, use it directly
+        if 'Pressure(RAW)[Main Buffer] (PSI)' in df_copy.columns:
+            # Weather Station is in hPa, convert to PSI for comparison
+            bom_pressure_psi = valid_df['BomBaro'] * HPA_TO_PSI
+            logger_pressure_psi = valid_df['Pressure(RAW)[Main Buffer] (PSI)']
+            
+            # Calculate difference directly in PSI (no double conversion!)
+            pressure_diff_psi = bom_pressure_psi - logger_pressure_psi
+        else:
+            # Convert hPa to PSI (for hPa sites)
+            pressure_diff_hpa = valid_df['BomBaro'] - valid_df['Barometric Pressure(RAW)[Main Buffer] (hPa)']
+            pressure_diff_psi = pressure_diff_hpa * HPA_TO_PSI
         
+        # AquaTroll formula
+        specific_gravity = water_density / reference_density
+        depth_correction = (CONVERSION_FACTOR * pressure_diff_psi) / specific_gravity
+        
+        # Add correction to raw depth
+        adjusted_depth = valid_df['Depth(m)raw'] + depth_correction
         df_copy.loc[valid_mask, 'Depth(m)adjusted'] = adjusted_depth
         
         num_adjusted = valid_mask.sum()
@@ -453,63 +525,89 @@ def calculate_adjusted_depth(
             num_negative = negative_adjusted.sum()
             logger.warning(f"Found {num_negative} negative adjusted depths, setting to NaN")
             df_copy.loc[negative_adjusted, 'Depth(m)adjusted'] = np.nan
+        
+        # Also set negative raw depths to NaN before copying to adjusted
+        negative_raw = (df_copy['Depth(m)raw'] < 0) & df_copy['Depth(m)raw'].notna()
+        if negative_raw.any():
+            num_negative_raw = negative_raw.sum()
+            logger.warning(f"Found {num_negative_raw} negative raw depths, setting to NaN")
+            df_copy.loc[negative_raw, 'Depth(m)raw'] = np.nan
     
     else:
         logger.warning("No valid rows for adjusted depth calculation")
+
+    # Handle use cases where adjustments should not be applied
     
-    # Handle skipped adjustments
+    # 1. Shallow depth (≤0.3m)
     shallow_mask = (
         df_copy['Depth(m)raw'].notna() & 
         (df_copy['Depth(m)raw'] > 0) &
         (df_copy['Depth(m)raw'] <= 0.3)
     )
     
+    # 2. Large barometric difference (>50 hPa). Sensor completely failed. Consider replacement
     large_diff_mask = (
         df_copy['Depth(m)raw'].notna() & 
-        (abs(df_copy['BomBaro'] - df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)']) > 50) &
-        df_copy['BomBaro'].notna() &
-        df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].notna()
+        (df_copy['pressure_diff_hpa'] > 50) &
+        df_copy['pressure_diff_hpa'].notna()
     )
     
+    # 3. Small barometric difference (≤5 hPa). No need for adjustment
     small_diff_mask = (
         df_copy['Depth(m)raw'].notna() & 
-        (abs(df_copy['BomBaro'] - df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)']) <= 5) &
-        df_copy['BomBaro'].notna() &
-        df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].notna()
+        (df_copy['pressure_diff_hpa'] <= 5) &
+        df_copy['pressure_diff_hpa'].notna()
     )
     
+    # 4. Excessive pressure drift (20 < diff ≤ 50 hPa). Consider a field calibration
+    excessive_drift_mask = (
+        df_copy['Depth(m)raw'].notna() & 
+        (df_copy['Depth(m)raw'] > 0.3) &
+        (df_copy['pressure_diff_hpa'] > 20) &
+        (df_copy['pressure_diff_hpa'] <= 50) &
+        df_copy['pressure_diff_hpa'].notna()
+    )
+    
+    # 5. No Weather Station data
     no_bom_mask = (
         df_copy['Depth(m)raw'].notna() & 
         (df_copy['Depth(m)raw'] > 0) &
         df_copy['BomBaro'].isna()
     )
     
+    # 6. No logger barometric data (check both PSI and hPa columns)
     no_logger_baro_mask = (
         df_copy['Depth(m)raw'].notna() & 
         (df_copy['Depth(m)raw'] > 0) &
-        df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].isna()
+        df_copy['Barometric Pressure(RAW)[Main Buffer] (hPa)'].isna() &
+        df_copy.get('Pressure(RAW)[Main Buffer] (PSI)', pd.Series([np.nan] * len(df_copy))).isna()
     )
     
     skip_masks = {
         'shallow': shallow_mask,
         'large_diff': large_diff_mask,
         'small_diff': small_diff_mask,
+        'excessive_drift': excessive_drift_mask,
         'no_bom': no_bom_mask,
         'no_logger_baro': no_logger_baro_mask
     }
     
-    skip_adjust_mask = shallow_mask | large_diff_mask | small_diff_mask | no_bom_mask | no_logger_baro_mask
+    skip_adjust_mask = (
+        shallow_mask | large_diff_mask | small_diff_mask | 
+        excessive_drift_mask | no_bom_mask | no_logger_baro_mask
+    )
     
     # Set adjusted to raw for skipped
     df_copy.loc[skip_adjust_mask, 'Depth(m)adjusted'] = df_copy.loc[skip_adjust_mask, 'Depth(m)raw']
     
-    # Add comments if no existing comment
+    # Add comments 
     comment_dict = {
         'shallow': "Shallow depth: no adjustment applied",
         'large_diff': "Large barometric difference observed: no adjustment applied",
         'small_diff': "Small barometric difference: no adjustment applied (possible sensor noise)",
+        'excessive_drift': "Large sensor drift detected (>20 hPa): adjusted value formula not applied",
         'no_bom': "No weather station data: Adjustments can not be applied",
-        'no_logger_baro': "No AquaTroll pressure data.  Adjustments can not be applied"
+        'no_logger_baro': "No AquaTroll pressure data. Adjustments can not be applied"
     }
     
     for reason, mask in skip_masks.items():
@@ -545,12 +643,12 @@ def consolidate_comments(df: pd.DataFrame) -> pd.DataFrame:
     for _, group in df.groupby('group'):
         if group['is_comment_only'].iloc[0]:
             # For comment groups, take the first row
-            first_row = group.iloc[0].copy()
-            aggregated.append(first_row)
+            aggregated.append(group.iloc[0].to_dict())
         else:
-            # For data groups, keep all rows
+            # For data groups, keep all rows. 
+            # Pandas needs all items in the aggregated list to be dictionary
             aggregated.extend(group.to_dict('records'))
-    
+
     consolidated_df = pd.DataFrame(aggregated)
     consolidated_df = consolidated_df.drop(columns=['is_comment_only', 'comment_text', 'group'], errors='ignore')
     
@@ -625,7 +723,7 @@ def consolidate_csv_files(
     try:
         logger.info("Concatenating all site data...")
         final_df = pd.concat(consolidated_data, ignore_index=True)
-        columns_to_drop = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)', 'Pressure(RAW)[Main Buffer] (PSI)']
+        columns_to_drop = ['Date', 'Time', 'Level(RAW)[Main Buffer] (ft)']
         existing_columns_to_drop = [col for col in columns_to_drop if col in final_df.columns]
         if existing_columns_to_drop:
             logger.info(f"Removing duplicate raw columns: {existing_columns_to_drop}")
@@ -763,6 +861,11 @@ def consolidate_csv_files(
             final_df_processed['Depth(m)adjusted'].notna() | 
             (final_df_processed['OTHER - Comments - Text'].fillna('').str.strip() != '')
         ].copy()
+
+        # For rows with no adjusted depth, set to 0 (dry pools/equipment issues)
+        pbo_df.loc[pbo_df['Depth(m)adjusted'].isna(), 'Depth(m)adjusted'] = 0.0
+
+        pbo_df['OTHER - Comments - Text'] = ''  # Clear all comments for the SQL import file
         if not pbo_df.empty:
             pbo_df.rename(columns={'Depth(m)adjusted': 'LEVEL - DEPTH TO WATER - m (INPUT)'}, inplace=True)
             pbo_column_order = [
@@ -783,12 +886,16 @@ def consolidate_csv_files(
     logger.info(f"Preparing verification file: {os.path.basename(output_file)}")
     try:
         excel_df = final_df_processed.copy()
+        
+        # Drop internal calculation column
+        excel_df = excel_df.drop(columns=['pressure_diff_hpa'], errors='ignore')
+        
         desired_column_order = [
             'Sample Point',
             'Date Time (dd/mm/yyyy hh24:mi:ss)',
             'BomBaro',
             'Barometric Pressure(RAW)[Main Buffer] (hPa)',
-            'Pressure(RAW)[Main Buffer] (PSI) - Original',
+            'Pressure(RAW)[Main Buffer] (PSI)',
             'Depth(m)raw',
             'Depth(m)adjusted',
             'OTHER - Comments - Text'
