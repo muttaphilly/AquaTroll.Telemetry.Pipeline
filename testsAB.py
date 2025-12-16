@@ -80,6 +80,10 @@ TEST_DESCRIPTIONS = {
         "Checks site availability from SITES_CONFIG env variable, "
         "by reading the 'enabled' flag."
     ),
+    "Network Availability Check": (
+    "Locates last recorded depth reading for each enabled site. "
+    "Use as a prompt to investigate whether pool has gone dry or equipment is faulty"
+    ),
     "Depth Calculation Verification": (
         "Independently tests barometric pressure adjustments using downloaded files "
         "then cross-checks results against the pipeline's final csv results. "
@@ -1101,6 +1105,209 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # ========================================================================
     # DATA QUALITY TESTS
     # ========================================================================
+  
+    def test_10_data_recency_check(self):
+            """Check the most recent depth data reading for each enabled site."""
+            if not os.path.exists('data_downloads'):
+                self.record_result(
+                    "Network Availability Check",
+                    "Data Quality",
+                    "FAIL",
+                    "data_downloads directory not found"
+                )
+                self.fail("data_downloads directory not available")
+                return
+            
+            enabled_sites = {
+                name: config for name, config in self.site_config.items()
+                if config.get('enabled', False)
+            }
+            
+            if not enabled_sites:
+                self.record_result(
+                    "Network Availability Check",
+                    "Data Quality",
+                    "SKIP",
+                    "No enabled sites configured"
+                )
+                self.skipTest("No enabled sites available")
+                return
+            
+            recency_results = []
+            current_date = datetime.now()
+            fail_count = 0  # No CSV or empty CSV
+            warning_count = 0  # Data > 28 days old
+            pass_count = 0  # Data within 28 days
+            
+            for site_id, config in enabled_sites.items():
+                csv_path = os.path.join('data_downloads', f"{site_id}.csv")
+                
+                # Check if CSV exists
+                if not os.path.exists(csv_path):
+                    recency_results.append({
+                        'site': site_id,
+                        'date': 'N/A',
+                        'value': 'N/A',
+                        'unit': 'N/A',
+                        'days_since': '>28 days ago',
+                        'status': 'FAIL'
+                    })
+                    fail_count += 1
+                    continue
+                
+                try:
+                    df = pd.read_csv(csv_path)
+                    
+                    # Check if CSV is empty
+                    if df.empty:
+                        recency_results.append({
+                            'site': site_id,
+                            'date': 'N/A',
+                            'value': 'N/A',
+                            'unit': 'N/A',
+                            'days_since': '>28 days ago',
+                            'status': 'FAIL'
+                        })
+                        fail_count += 1
+                        continue
+                    
+                    # Detect level column and unit
+                    level_column = None
+                    unit = None
+                    
+                    # Check for metres
+                    if 'Level in metres (m)' in df.columns:
+                        level_column = 'Level in metres (m)'
+                        unit = 'm'
+                    # Check for feet
+                    elif 'Level(RAW)[Main Buffer] (ft)' in df.columns:
+                        level_column = 'Level(RAW)[Main Buffer] (ft)'
+                        unit = 'ft'
+                    # Fallback: any column with 'Level'
+                    else:
+                        for col in df.columns:
+                            if 'Level' in col:
+                                level_column = col
+                                # Try to infer unit from column name
+                                if '(m)' in col:
+                                    unit = 'm'
+                                elif '(ft)' in col:
+                                    unit = 'ft'
+                                else:
+                                    unit = 'unknown'
+                                break
+                    
+                    if level_column is None:
+                        recency_results.append({
+                            'site': site_id,
+                            'date': 'N/A',
+                            'value': 'N/A',
+                            'unit': 'N/A',
+                            'days_since': 'No level column found',
+                            'status': 'FAIL'
+                        })
+                        fail_count += 1
+                        continue
+                    
+                    # Check for Date column
+                    if 'Date' not in df.columns:
+                        recency_results.append({
+                            'site': site_id,
+                            'date': 'N/A',
+                            'value': 'N/A',
+                            'unit': unit,
+                            'days_since': 'No date column found',
+                            'status': 'FAIL'
+                        })
+                        fail_count += 1
+                        continue
+                    
+                    # Parse dates and find most recent with valid depth data
+                    df['parsed_date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
+                    df[level_column] = pd.to_numeric(df[level_column], errors='coerce')
+                    
+                    # Filter for valid dates and depths
+                    valid_data = df[df['parsed_date'].notna() & df[level_column].notna()]
+                    
+                    if valid_data.empty:
+                        recency_results.append({
+                            'site': site_id,
+                            'date': 'N/A',
+                            'value': 'N/A',
+                            'unit': unit,
+                            'days_since': '>28 days ago',
+                            'status': 'FAIL'
+                        })
+                        fail_count += 1
+                        continue
+                    
+                    # Get most recent entry
+                    most_recent_idx = valid_data['parsed_date'].idxmax()
+                    most_recent_date = valid_data.loc[most_recent_idx, 'parsed_date']
+                    most_recent_value = valid_data.loc[most_recent_idx, level_column]
+                    
+                    # Calculate days since
+                    days_since = (current_date - most_recent_date).days
+                    
+                    # Format date for display
+                    date_str = most_recent_date.strftime('%d/%m/%Y')
+                    
+                    # Determine status
+                    if days_since <= 28:
+                        status = 'PASS'
+                        pass_count += 1
+                    else:
+                        status = 'WARNING'
+                        warning_count += 1
+                    
+                    recency_results.append({
+                        'site': site_id,
+                        'date': date_str,
+                        'value': round(most_recent_value, 2),
+                        'unit': unit,
+                        'days_since': f"{days_since} days ago",
+                        'status': status
+                    })
+                    
+                except Exception as e:
+                    recency_results.append({
+                        'site': site_id,
+                        'date': 'N/A',
+                        'value': 'N/A',
+                        'unit': 'N/A',
+                        'days_since': f'Error: {str(e)}',
+                        'status': 'FAIL'
+                    })
+                    fail_count += 1
+            
+            # Determine overall test status
+            if fail_count > 0:
+                overall_status = "FAIL"
+            elif warning_count > 0:
+                overall_status = "WARNING"
+            else:
+                overall_status = "PASS"
+            
+            details = (
+                f"Checked {len(enabled_sites)} enabled sites: "
+                f"{pass_count} within 28 days, "
+                f"{warning_count} stale (>28 days), "
+                f"{fail_count} missing/empty data"
+            )
+            
+            self.record_result(
+                "Network Availability Check",
+                "Data Quality",
+                overall_status,
+                details,
+                {'recency_results': recency_results}
+            )
+            
+            if fail_count > 0:
+                self.fail(
+                    f"{fail_count} site(s) had no data or missing CSV files"
+                )
+    
     def test_11_statistical_anomaly_detection(self):
         """Test for statistical anomalies in validated data."""
         if not os.path.exists(self.validated_output_file):
@@ -1276,7 +1483,22 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         html = ""
         test_name = test['test_name']
         data = test['data']
-        if test_name == 'Logger Portal Authentication':
+        if test_name == 'Network Availability Check':
+            if data and 'recency_results' in data and data['recency_results']:
+                html += '<table>'
+                html += '<tr><th>Site</th><th>Date</th><th>Depth Reading</th><th>Unit</th><th>Last Datapoint</th><th>Status</th></tr>'
+                for res in sorted(data['recency_results'], key=lambda x: x['site']):
+                    status_class = res['status'].lower()
+                    html += f"""<tr>
+                        <td>{res['site']}</td>
+                        <td>{res['date']}</td>
+                        <td>{res['value']}</td>
+                        <td>{res['unit']}</td>
+                        <td>{res['days_since']}</td>
+                        <td class="{status_class}">{res['status']}</td>
+                    </tr>"""
+                html += '</table>'       
+        elif test_name == 'Logger Portal Authentication':
             if data:
                 html += '<h4>Authentication Success:</h4><ul>'
                 if 'session_cookie' in data:
