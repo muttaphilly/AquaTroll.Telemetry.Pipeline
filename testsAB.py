@@ -4,16 +4,14 @@ A/B tests for the data scraping, validation & processing pipeline.
 Monthly verification of script performance through testing of:
 - Data connectivity and authentication
 - Validation of returned data structures
-- Battery health check 
+- Battery health check
 - Verification of depth calculations
 - Site availability checks
 - Flagging of any statistical anomalies
-
 """
 # ============================================================================
 # IMPORTS
 # ============================================================================
-# Standard Library
 import json
 import logging
 import os
@@ -34,17 +32,16 @@ from dotenv import load_dotenv
 # Suppress warnings during test execution
 import warnings
 warnings.filterwarnings('ignore')
+
 # Add project directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ============================================================================
 # GLOBAL CONFIGURATION
 # ============================================================================
-
 # ID the system and user running this script
 COMPUTER_NAME = gethostname()
 USERNAME = getuser()
-
 # ============================================================================
 # TEST DESCRIPTIONS
 # ============================================================================
@@ -143,7 +140,6 @@ HTML_FOOTER = """
 </body>
 </html>
 """
-
 # ============================================================================
 # CALCULATION CONSTANTS
 # ============================================================================
@@ -155,15 +151,14 @@ class CalculationConstants:
     # Pressure conversion
     HPA_TO_PSI = 0.0145038
     PSI_TO_HPA = 68.9476
-    
+   
     # Depth adjustment (AquaTroll specifications)
-    CONVERSION_FACTOR = 0.70307  # Pressure differential to water column height
-    
+    CONVERSION_FACTOR = 0.70307 # Pressure differential to water column height
+   
     # Thresholds for adjustment application
-    MIN_DEPTH_THRESHOLD = 0.3  # meters - prevents corrections in shallow pools
-    MIN_BARO_DIFF_THRESHOLD = 5.0  # hPa - prevents corrections for sensor noise
-    MAX_BARO_DIFF_THRESHOLD = 20.0  # hPa - prevents corrections for sensor malfunction
-
+    MIN_DEPTH_THRESHOLD = 0.3 # meters - prevents corrections in shallow pools
+    MIN_BARO_DIFF_THRESHOLD = 5.0 # hPa - prevents corrections for sensor noise
+    MAX_BARO_DIFF_THRESHOLD = 20.0 # hPa - prevents corrections for sensor malfunction
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -242,7 +237,6 @@ def calculate_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
     depth_adjustment_m = CalculationConstants.CONVERSION_FACTOR * delta_p_psi
     adjusted_depth = depth_m_raw + depth_adjustment_m
     return round(adjusted_depth, 2), True
-
 # ============================================================================
 # MAIN TEST CLASS
 # ============================================================================
@@ -259,6 +253,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         load_dotenv()
         cls.results = []
         cls.test_start_time = datetime.now()
+        # Get script directory to make paths absolute
+        cls.script_dir = os.path.dirname(os.path.abspath(__file__))
         # Session storage for multi-step tests
         cls.auth_session = None
         cls.channel_response = None
@@ -269,9 +265,9 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         cls.login_url = os.getenv("LOGIN_URL", "")
         # Load logger sites
         cls.site_config = json.loads(os.getenv("SITES_CONFIG", "{}"))
-        # Define data paths
-        cls.data_downloads_path = 'data_downloads'
-        cls.transformed_data_path = 'transformed_data'
+        # Define data paths — now absolute relative to script location
+        cls.data_downloads_path = os.path.join(cls.script_dir, 'data_downloads')
+        cls.transformed_data_path = os.path.join(cls.script_dir, 'transformed_data')
         cls.validated_output_file = os.path.join(
             cls.transformed_data_path,
             'validatedDepthData.csv'
@@ -294,7 +290,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             'data': data,
             'timestamp': datetime.now()
         })
-    
+   
     # ========================================================================
     # CONNECTIVITY TESTS
     # ========================================================================
@@ -438,7 +434,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 self.__class__.auth_session = None
                 self.fail("Authentication failed")
                 return
-            # Success - store session for other tests (use class variable!)
+            # Success. Store session for other tests (use class variable!)
             self.__class__.auth_session = session
             self.record_result(
                 "Logger Portal Authentication",
@@ -598,11 +594,11 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             page_text = self.__class__.channel_response.text.lower()
             # Check for table/channel selection mechanism
             has_channel_selector = (
-                soup.find('select') is not None or  # Any dropdown
-                soup.find('form') is not None or     # Any form
-                'table' in page_text                  # Reference to tables
+                soup.find('select') is not None or # Any dropdown
+                soup.find('form') is not None or # Any form
+                'table' in page_text # Reference to tables
             )
-            # Check for CSV/export button (more comprehensive search)
+            # Check for CSV/export button
             has_csv_button = (
                 'csv' in page_text or
                 soup.find('input', attrs={'value': lambda x: x and 'csv' in str(x).lower()}) is not None or
@@ -648,7 +644,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"Error checking download functionality: {str(e)}"
             )
             self.fail(f"Download check failed: {e}")
-    
+   
     # ========================================================================
     # DATA STRUCTURE TESTS
     # ========================================================================
@@ -706,7 +702,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 cells = row.select('th, td')
                 if cells and len(cells) > 1:
                     date_cell = cells[0].get_text(strip=True)
-                    if date_cell.isdigit():  # Valid day number
+                    if date_cell.isdigit(): # Valid day number
                         first_valid_row = cells
                         break
             if not first_valid_row:
@@ -789,7 +785,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail(f"Failed to parse weather data: {e}")
     def test_06_logger_data_structure(self):
         """Test logger CSV data structure."""
-        if not os.path.exists('data_downloads'):
+        if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Logger Data Structure",
                 "Data Structure",
@@ -798,7 +794,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail("data_downloads directory not available - pipeline may not have run")
             return
-        csv_files = [f for f in os.listdir('data_downloads') if f.endswith('.csv') and f != 'weather_data.csv' and 'baro' not in f.lower()]
+        csv_files = [f for f in os.listdir(self.data_downloads_path) if f.endswith('.csv') and f != 'weather_data.csv' and 'baro' not in f.lower()]
         if not csv_files:
             self.record_result(
                 "Logger Data Structure",
@@ -808,7 +804,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
             self.fail("No logger CSV files available - pipeline may not have run")
             return
-        test_file = os.path.join('data_downloads', csv_files[0])
+        test_file = os.path.join(self.data_downloads_path, csv_files[0])
         try:
             df = pd.read_csv(test_file)
             # Required columns from httpLoggerScraper.py output
@@ -855,7 +851,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail(f"Failed to read logger data: {e}")
     def test_07_battery_voltage_check(self):
         """Check battery voltage for enabled sites."""
-        if not os.path.exists('data_downloads'):
+        if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Battery Voltage Check",
                 "Battery Voltage",
@@ -878,10 +874,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.skipTest("No enabled sites available")
             return
         battery_results = []
-        critical_fail_count = 0  # Missing file or read error
-        warning_count = 0        # Missing column, no data, or low voltage
+        critical_fail_count = 0 # Missing file or read error
+        warning_count = 0 # Missing column, no data, or low voltage
         for site_id, config in enabled_sites.items():
-            csv_path = os.path.join('data_downloads', f"{site_id}.csv")
+            csv_path = os.path.join(self.data_downloads_path, f"{site_id}.csv")
             if not os.path.exists(csv_path):
                 battery_results.append({
                     'site': site_id,
@@ -916,7 +912,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     })
                     warning_count += 1
                     continue
-                current_voltage = battery_series.iloc[-1]  # Most recent reading
+                current_voltage = battery_series.iloc[-1] # Most recent reading
                 pressure_unit = config.get('pressure_unit', 'hpa').lower()
                 threshold = 3.5 if pressure_unit == 'hpa' else 12.7
                 if current_voltage < threshold:
@@ -961,7 +957,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"{critical_fail_count} site(s) had critical failures "
                 "(missing CSV or read error)"
             )
-    
+   
     # ========================================================================
     # CONFIGURATION TESTS
     # ========================================================================
@@ -1008,7 +1004,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"Configuration error: {str(e)}"
             )
             self.fail(f"Site configuration test failed: {e}")
-    
+   
     # ========================================================================
     # CALCULATION TESTS
     # ========================================================================
@@ -1062,7 +1058,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     depth_m_raw, bom_baro, logger_baro
                 )
                 # Compare with expected
-                tolerance = 0.02  # 2cm tolerance
+                tolerance = 0.02 # 2cm tolerance
                 passed = abs(calculated_adjusted_m - depth_m_adjusted_expected) < tolerance
                 calculation_results.append({
                     'test_num': len(calculation_results) + 1,
@@ -1101,14 +1097,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"Error during calculation verification: {str(e)}"
             )
             self.fail(f"Calculation verification failed: {e}")
-    
+   
     # ========================================================================
     # DATA QUALITY TESTS
     # ========================================================================
-  
+ 
     def test_10_data_recency_check(self):
             """Check the most recent depth data reading for each enabled site."""
-            if not os.path.exists('data_downloads'):
+            if not os.path.exists(self.data_downloads_path):
                 self.record_result(
                     "Network Availability Check",
                     "Data Quality",
@@ -1117,12 +1113,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 )
                 self.fail("data_downloads directory not available")
                 return
-            
+           
             enabled_sites = {
                 name: config for name, config in self.site_config.items()
                 if config.get('enabled', False)
             }
-            
+           
             if not enabled_sites:
                 self.record_result(
                     "Network Availability Check",
@@ -1132,16 +1128,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 )
                 self.skipTest("No enabled sites available")
                 return
-            
+           
             recency_results = []
             current_date = datetime.now()
-            fail_count = 0  # No CSV or empty CSV
-            warning_count = 0  # Data > 28 days old
-            pass_count = 0  # Data within 28 days
-            
+            fail_count = 0 # No CSV or empty CSV
+            warning_count = 0 # Data > 28 days old
+            pass_count = 0 # Data within 28 days
+           
             for site_id, config in enabled_sites.items():
-                csv_path = os.path.join('data_downloads', f"{site_id}.csv")
-                
+                csv_path = os.path.join(self.data_downloads_path, f"{site_id}.csv")
+               
                 # Check if CSV exists
                 if not os.path.exists(csv_path):
                     recency_results.append({
@@ -1154,10 +1150,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     })
                     fail_count += 1
                     continue
-                
+               
                 try:
                     df = pd.read_csv(csv_path)
-                    
+                   
                     # Check if CSV is empty
                     if df.empty:
                         recency_results.append({
@@ -1170,11 +1166,11 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         })
                         fail_count += 1
                         continue
-                    
+                   
                     # Detect level column and unit
                     level_column = None
                     unit = None
-                    
+                   
                     # Check for metres
                     if 'Level in metres (m)' in df.columns:
                         level_column = 'Level in metres (m)'
@@ -1196,7 +1192,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                                 else:
                                     unit = 'unknown'
                                 break
-                    
+                   
                     if level_column is None:
                         recency_results.append({
                             'site': site_id,
@@ -1208,7 +1204,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         })
                         fail_count += 1
                         continue
-                    
+                   
                     # Check for Date column
                     if 'Date' not in df.columns:
                         recency_results.append({
@@ -1221,14 +1217,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         })
                         fail_count += 1
                         continue
-                    
+                   
                     # Parse dates and find most recent with valid depth data
                     df['parsed_date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
                     df[level_column] = pd.to_numeric(df[level_column], errors='coerce')
-                    
+                   
                     # Filter for valid dates and depths
                     valid_data = df[df['parsed_date'].notna() & df[level_column].notna()]
-                    
+                   
                     if valid_data.empty:
                         recency_results.append({
                             'site': site_id,
@@ -1240,18 +1236,18 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         })
                         fail_count += 1
                         continue
-                    
+                   
                     # Get most recent entry
                     most_recent_idx = valid_data['parsed_date'].idxmax()
                     most_recent_date = valid_data.loc[most_recent_idx, 'parsed_date']
                     most_recent_value = valid_data.loc[most_recent_idx, level_column]
-                    
+                   
                     # Calculate days since
                     days_since = (current_date - most_recent_date).days
-                    
+                   
                     # Format date for display
                     date_str = most_recent_date.strftime('%d/%m/%Y')
-                    
+                   
                     # Determine status
                     if days_since <= 28:
                         status = 'PASS'
@@ -1259,7 +1255,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     else:
                         status = 'WARNING'
                         warning_count += 1
-                    
+                   
                     recency_results.append({
                         'site': site_id,
                         'date': date_str,
@@ -1268,7 +1264,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         'days_since': f"{days_since} days ago",
                         'status': status
                     })
-                    
+                   
                 except Exception as e:
                     recency_results.append({
                         'site': site_id,
@@ -1279,7 +1275,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         'status': 'FAIL'
                     })
                     fail_count += 1
-            
+           
             # Determine overall test status
             if fail_count > 0:
                 overall_status = "FAIL"
@@ -1287,14 +1283,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 overall_status = "WARNING"
             else:
                 overall_status = "PASS"
-            
+           
             details = (
                 f"Checked {len(enabled_sites)} enabled sites: "
                 f"{pass_count} within 28 days, "
                 f"{warning_count} stale (>28 days), "
                 f"{fail_count} missing/empty data"
             )
-            
+           
             self.record_result(
                 "Network Availability Check",
                 "Data Quality",
@@ -1302,12 +1298,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 details,
                 {'recency_results': recency_results}
             )
-            
+           
             if fail_count > 0:
                 self.fail(
                     f"{fail_count} site(s) had no data or missing CSV files"
                 )
-    
+   
     def test_11_statistical_anomaly_detection(self):
         """Test for statistical anomalies in validated data."""
         if not os.path.exists(self.validated_output_file):
@@ -1392,7 +1388,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"Error during anomaly detection: {str(e)}"
             )
             self.fail(f"Anomaly detection failed: {e}")
-    
+   
     # ========================================================================
     # REPORT GENERATION
     # ========================================================================
@@ -1436,7 +1432,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(result)
-        # Category order — Logger Portal tests now nested under Connectivity
+        # Category order
         category_order = [
             'Connectivity',
             'Data Structure',
@@ -1497,7 +1493,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         <td>{res['days_since']}</td>
                         <td class="{status_class}">{res['status']}</td>
                     </tr>"""
-                html += '</table>'       
+                html += '</table>'
         elif test_name == 'Logger Portal Authentication':
             if data:
                 html += '<h4>Authentication Success:</h4><ul>'
@@ -1584,7 +1580,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td></tr>"
                 html += '</table></div>'
         return html
-
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
