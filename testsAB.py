@@ -71,7 +71,7 @@ TEST_DESCRIPTIONS = {
     ),
     "Battery Voltage Check": (
         "Verifies battery voltage levels for each enabled site, flagging warnings if below "
-        "thresholds (Logger: <3.5V, Starlink: <12.7V)."
+        "thresholds (Logger: <3.5V, Starlink: <13.1V)."
     ),
     "Site Configuration": (
         "Checks site availability from SITES_CONFIG env variable, "
@@ -914,7 +914,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     continue
                 current_voltage = battery_series.iloc[-1] # Most recent reading
                 pressure_unit = config.get('pressure_unit', 'hpa').lower()
-                threshold = 3.5 if pressure_unit == 'hpa' else 12.7
+                threshold = 3.5 if pressure_unit == 'hpa' else 13.1
                 if current_voltage < threshold:
                     status = 'WARNING'
                     warning_count += 1
