@@ -63,7 +63,8 @@ TEST_DESCRIPTIONS = {
     ),
     "Weather Data Structure": (
         "Verifies weather website accessibility and confirms the presence of pressure data "
-        "at the expected positions (9 am at position 15, 3 pm at position 21)."
+        "at the expected positions (9 am at position 15, 3 pm at position 21) and rainfall "
+        "data at position 4."
     ),
     "Logger Data Structure": (
         "Checks that downloaded logger CSV files contain required columns for "
@@ -716,10 +717,28 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 return
             # Validate structure
             total_cells = len(first_valid_row)
+            position_4_valid = False
             position_15_valid = False
             position_21_valid = False
+            position_4_value = "N/A"
             position_15_value = "N/A"
             position_21_value = "N/A"
+            
+            # Check position 4 (rainfall)
+            if total_cells > 4:
+                val_4 = first_valid_row[4].get_text(strip=True)
+                try:
+                    # Rainfall can be 0 or positive, empty is also valid (no rain)
+                    if val_4 == '':
+                        position_4_valid = True
+                        position_4_value = "0.0"
+                    else:
+                        float_val = float(val_4)
+                        position_4_valid = 0 <= float_val <= 500  # Reasonable rainfall range in mm
+                        position_4_value = val_4
+                except (ValueError, TypeError):
+                    pass
+            
             # Check position 15 (9am pressure)
             if total_cells > 15:
                 val_15 = first_valid_row[15].get_text(strip=True)
@@ -738,16 +757,18 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     position_21_value = val_21
                 except (ValueError, TypeError):
                     pass
-            # Need both pressure columns to be valid
-            if position_15_valid and position_21_valid:
+            # Need all three columns to be valid
+            if position_4_valid and position_15_valid and position_21_valid:
                 self.record_result(
                     "Weather Data Structure",
                     "Data Structure",
                     "PASS",
-                    f"Weather table structure verified: {total_cells} columns, pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
+                    f"Weather table structure verified: {total_cells} columns, rainfall at position 4 ({position_4_value} mm), pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
                 )
             else:
                 issues = []
+                if not position_4_valid:
+                    issues.append(f"Position 4 (rainfall) invalid (got: '{position_4_value}')")
                 if not position_15_valid:
                     issues.append(f"Position 15 invalid (got: '{position_15_value}')")
                 if not position_21_valid:
@@ -756,9 +777,9 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Structure",
                     "FAIL",
-                    f"Weather table pressure data validation failed: {', '.join(issues)}"
+                    f"Weather table data validation failed: {', '.join(issues)}"
                 )
-                self.fail("Pressure data not in expected positions")
+                self.fail("Weather data not in expected positions")
         except requests.exceptions.Timeout:
             self.record_result(
                 "Weather Data Structure",
@@ -1323,7 +1344,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Convert to numeric
             df['Depth(m)adjusted'] = pd.to_numeric(df['Depth(m)adjusted'], errors='coerce')
             df['BomBaro'] = pd.to_numeric(df['BomBaro'], errors='coerce')
+            df['Rainfall'] = pd.to_numeric(df.get('Rainfall', pd.Series()), errors='coerce')
             df = df.dropna(subset=['Sample Point'])
+            
+            # Parse dates for rain event matching
+            df['parsed_date'] = pd.to_datetime(df['Date Time (dd/mm/yyyy hh24:mi:ss)'], errors='coerce')
+            
             depth_anomalies = []
             pressure_anomalies = []
             # Analyse by site
@@ -1335,11 +1361,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     site_data['depth_pct_change'] = site_data['Depth(m)adjusted'].pct_change() * 100
                     depth_mask = abs(site_data['depth_pct_change']) > 15
                     for idx in site_data[depth_mask].index:
+                        # Check if rainfall occurred on this date
+                        rainfall_val = site_data.loc[idx, 'Rainfall'] if 'Rainfall' in site_data.columns else None
+                        rain_event = rainfall_val > 0 if pd.notna(rainfall_val) else False
+                        
                         depth_anomalies.append({
                             'site': site,
                             'date': str(site_data.loc[idx, 'Date Time (dd/mm/yyyy hh24:mi:ss)']),
                             'value': round(site_data.loc[idx, 'Depth(m)adjusted'], 1),
-                            'change_pct': round(site_data.loc[idx, 'depth_pct_change'], 1)
+                            'change_pct': round(site_data.loc[idx, 'depth_pct_change'], 1),
+                            'rain_event': rain_event
                         })
                 # Pressure anomalies (>2% change)
                 if 'BomBaro' in site_data.columns:
@@ -1568,9 +1599,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if data.get('depth_anomalies'):
                 html += '<h4>Depth Anomalies:</h4><div class="anomaly">'
                 html += f"<p>Max change: {data['depth_stats']['max_change_pct']}%</p>"
-                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
+                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th><th>Rain Event</th></tr>'
                 for a in data['depth_anomalies']:
-                    html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td></tr>"
+                    rain_status = 'True' if a.get('rain_event', False) else 'False'
+                    html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td><td>{rain_status}</td></tr>"
                 html += '</table></div>'
             if data.get('pressure_anomalies'):
                 html += '<h4>Pressure Anomalies:</h4><div class="anomaly">'

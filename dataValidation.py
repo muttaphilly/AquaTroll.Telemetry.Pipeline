@@ -117,7 +117,7 @@ def get_bom_baro_data() -> Optional[pd.DataFrame]:
         logger.warning("Weather station scrape returned no data.")
         return None
     
-    required_cols = {'Date', 'Time', 'hPa'}
+    required_cols = {'Date', 'Time', 'hPa', 'Rainfall'}
     if not required_cols.issubset(baro_data.columns):
         logger.error(f"Scraped weather data missing required columns ({required_cols}).")
         return None
@@ -132,11 +132,12 @@ def get_bom_baro_data() -> Optional[pd.DataFrame]:
     # Clean and deduplicate
     baro_data = (baro_data
                  .dropna(subset=['Date Time (dd/mm/yyyy hh24:mi:ss)'])
-                 [['Date Time (dd/mm/yyyy hh24:mi:ss)', 'hPa']]
+                 [['Date Time (dd/mm/yyyy hh24:mi:ss)', 'hPa', 'Rainfall']]
                  .rename(columns={'hPa': 'BomBaro'})
                  .copy())
     
     baro_data['BomBaro'] = pd.to_numeric(baro_data['BomBaro'], errors='coerce')
+    baro_data['Rainfall'] = pd.to_numeric(baro_data['Rainfall'], errors='coerce')
     baro_data = baro_data.dropna(subset=['BomBaro'])
     
     # Keep first entry per day
@@ -486,7 +487,7 @@ def save_output_file(df: pd.DataFrame, filepath: str, for_sql: bool = False):
         # Reorder columns
         desired_order = [
             'Sample Point', 'Date Time (dd/mm/yyyy hh24:mi:ss)',
-            'BomBaro', 'Barometric Pressure(RAW)[Main Buffer] (hPa)',
+            'BomBaro', 'Rainfall', 'Barometric Pressure(RAW)[Main Buffer] (hPa)',
             'Pressure(RAW)[Main Buffer] (PSI)', 'Depth(m)raw',
             'Depth(m)adjusted', 'OTHER - Comments - Text'
         ]
@@ -579,18 +580,23 @@ def consolidate_csv_files(input_folder: str, output_file: str,
     # Merge weather data
     bom_data = get_bom_baro_data()
     final_df['BomBaro'] = np.nan
+    final_df['Rainfall'] = np.nan
     
     if bom_data is not None:
         logger.info("Merging BoM data...")
         final_df['merge_date'] = final_df['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.date
         bom_data['merge_date'] = bom_data['Date Time (dd/mm/yyyy hh24:mi:ss)'].dt.date
         
-        final_df = pd.merge(final_df, bom_data[['merge_date', 'BomBaro']], 
+        final_df = pd.merge(final_df, bom_data[['merge_date', 'BomBaro', 'Rainfall']], 
                            on='merge_date', how='left', suffixes=('', '_bom'))
         
         if 'BomBaro_bom' in final_df.columns:
             final_df['BomBaro'] = final_df['BomBaro'].fillna(final_df['BomBaro_bom'])
             final_df = final_df.drop(columns=['BomBaro_bom'])
+        
+        if 'Rainfall_bom' in final_df.columns:
+            final_df['Rainfall'] = final_df['Rainfall'].fillna(final_df['Rainfall_bom'])
+            final_df = final_df.drop(columns=['Rainfall_bom'])
         
         final_df = final_df.drop(columns=['merge_date'])
         logger.info(f"Merge complete. {final_df['BomBaro'].notna().sum()} rows with BoM data")
