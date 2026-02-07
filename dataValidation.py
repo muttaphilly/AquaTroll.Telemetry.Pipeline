@@ -95,6 +95,9 @@ def format_datetime_separated(dt_series: pd.Series) -> pd.Series:
     def format_single(dt):
         if pd.isna(dt):
             return ""
+        # Handle case where datetime might already be a string (from placeholder data)
+        if isinstance(dt, str):
+            return dt
         date_part = dt.strftime('%d/%m/%Y')
         hour = dt.hour
         hour_12 = 12 if hour == 0 else (hour if hour <= 12 else hour - 12)
@@ -457,10 +460,14 @@ def save_output_file(df: pd.DataFrame, filepath: str, for_sql: bool = False):
         
         # Set missing adjusted depth to 0 (dry pools)
         output_df.loc[output_df['Depth(m)adjusted'].isna(), 'Depth(m)adjusted'] = 0.0
+        
+        # Round depth to 2 decimal places
+        output_df['Depth(m)adjusted'] = output_df['Depth(m)adjusted'].round(2)
+        
         output_df['OTHER - Comments - Text'] = ''  # Clear comments for SQL
         
-        # Rename and reorder columns
-        output_df.rename(columns={'Depth(m)adjusted': 'LEVEL - DEPTH TO WATER - m (INPUT)'}, inplace=True)
+        # Rename and reorder columns - put depth in WATER LEVEL column, not DEPTH TO WATER
+        output_df.rename(columns={'Depth(m)adjusted': 'LEVEL - WATER LEVEL - mAHD (INPUT)'}, inplace=True)
         columns = [
             'Sample Point', 
             'Date Time (dd/mm/yyyy hh24:mi:ss)',
