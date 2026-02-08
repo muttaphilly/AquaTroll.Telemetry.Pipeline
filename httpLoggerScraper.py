@@ -542,32 +542,43 @@ def get_enabled_sites():
     
     return enabled_sites
 
-def merge_csv_files(level_path, baro_path, battery_path, site_id):
-    """Merge level, barometric, and battery data CSVs"""
-    try:
-        level_df = pd.read_csv(level_path)
-        baro_df = pd.read_csv(baro_path)
-        battery_df = pd.read_csv(battery_path)
+def merge_csv_files(level_path, baro_path, battery_path):
+    """
+    Merge level, barometric, and battery data CSVs.
         
-        logger.info(f"  Level data: {len(level_df)} rows, columns: {list(level_df.columns)[:5]}...")
-        logger.info(f"  Baro data: {len(baro_df)} rows, columns: {list(baro_df.columns)[:5]}...")
-        logger.info(f"  Battery data: {len(battery_df)} rows, columns: {list(battery_df.columns)[:5]}...")
-        
-        # Merge on Date and Time columns
-        if 'Date' in level_df.columns and 'Time' in level_df.columns:
-            merged_df = pd.merge(level_df, baro_df, on=['Date', 'Time'], how='left')
-            merged_df = pd.merge(merged_df, battery_df, on=['Date', 'Time'], how='left')
-            
-            # Save merged data
-            merged_df.to_csv(level_path, index=False)
-            logger.info(f"  ✅ Merged: {len(merged_df)} rows, {len(merged_df.columns)} columns")
-            logger.info(f"  💾 Saved to {os.path.basename(level_path)}")
-        else:
-            logger.warning("  Date/Time columns not found, skipping merge")
-        
-    except Exception as e:
-        logger.error(f"  Error merging CSV files: {e}")
-
+    Args:
+        level_path (str): Path to level data CSV
+        baro_path (str): Path to barometric pressure CSV
+        battery_path (str): Path to battery voltage CSV
+        site_id (str): Site identifier (for logging)
+    
+    Raises:
+        FileNotFoundError: If any CSV file doesn't exist
+        pd.errors.ParserError: If CSV is malformed
+        KeyError: If Date/Time columns missing after merge
+    """
+    # Read CSV files - let pandas raise clear exceptions if files missing/malformed
+    level_df = pd.read_csv(level_path)
+    baro_df = pd.read_csv(baro_path)
+    battery_df = pd.read_csv(battery_path)
+    
+    logger.info(f"  Level data: {len(level_df)} rows, columns: {list(level_df.columns)[:5]}...")
+    logger.info(f"  Baro data: {len(baro_df)} rows, columns: {list(baro_df.columns)[:5]}...")
+    logger.info(f"  Battery data: {len(battery_df)} rows, columns: {list(battery_df.columns)[:5]}...")
+    
+    # Validate required columns exist
+    if 'Date' not in level_df.columns or 'Time' not in level_df.columns:
+        logger.warning("  Date/Time columns not found in level data, skipping merge")
+        return
+    
+    # Merge dataframes on Date and Time
+    merged_df = pd.merge(level_df, baro_df, on=['Date', 'Time'], how='left')
+    merged_df = pd.merge(merged_df, battery_df, on=['Date', 'Time'], how='left')
+    
+    # Save merged data (overwrites level_path with merged data)
+    merged_df.to_csv(level_path, index=False)
+    logger.info(f"  Merged: {len(merged_df)} rows, {len(merged_df.columns)} columns")
+    logger.info(f"  Saved to {os.path.basename(level_path)}")
 
 def run(download_path):
     """Main function to run the HTTP scraper"""
@@ -667,7 +678,7 @@ def run(download_path):
             
             # Merge csv files
             logger.info("🔀 Merging data files...")
-            merge_csv_files(level_path, baro_path, battery_path, site_id)
+            merge_csv_files(level_path, baro_path, battery_path)
             
             # Clean up temporary files
             for temp_path in [baro_path, battery_path]:
