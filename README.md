@@ -6,7 +6,7 @@ The industry standard for collecting surface pool depth readings largely relies 
 
 Off-the-shelf telemetry systems were either too bulky, too power-hungry, or lacked the connectivity required to operate in steep gorges of the project environment. To overcome this, [Maxy Engineering](https://maxyengineering.com.au/) developed a highly portable, power-independent logging system capable of transmitting data via 4G/5G or the Iridium satellite network which eliminates the need for regular site visits.
 
-This project links Maxy’s hardware with a software system that automates key processes: fetching raw data, performing daily pressure calibrations using external weather data, and distributing validated results. The calibrated data enables timely review of anomalies and corrective actions. Results are emailed to the site environmental team and formatted for upload into the company’s environmental data storage system. The full pipeline runs autonomously on a Raspberry Pi, providing reliable, continuous monitoring with no manual data handling.
+This project links Maxy's hardware with a software system that automates key processes: fetching raw data, performing daily pressure calibrations using external weather data, and distributing validated results. The calibrated data enables timely review of anomalies and corrective actions. Results are emailed to the site environmental team and formatted for upload into the company's environmental data storage system. The full pipeline runs autonomously on a Raspberry Pi, providing reliable, continuous monitoring with no manual data handling.
 
 ## Hardware Components
 <table>
@@ -23,135 +23,176 @@ This project links Maxy’s hardware with a software system that automates key p
 </td>
 </tr>
 </table>
+
 > *To discuss the most suitable setup for your location, contact Maxy Engineering at:* <br>
 > ✉️ **office@MAXYEngineering.com.au** <br>
 > 📞 **0478 221 776**
 
 ## How it Works
 The main script, `runPipeline.py`, orchestrates the following steps:
-1. **AquaTroll scraper (`httpLoggerScraper.py`)** uses a session-based approach, handling authentication (preserves cookies through requests.Session(), form entry (extracts and preserves ASP.NET ViewState tokens), menu support (ids portal mode) and downloads (fetches via channel-specific URLs).
-2. **Scraping Weather Data (`weatherStation.py`):** Uses a GET Request and BeautifulSoup to scrape weather website for daily barometric pressure readings.
+
+1. **AquaTroll scraper (`httpLoggerScraper.py`)** Handles the full login process, navigates through the portal menus to each site, and downloads the latest data files. A short configurable pause between each site download keeps requests to the portal at a reasonable rate.
+2. **Scraping Weather Data (`weatherStation.py`):** Uses a GET request and BeautifulSoup to scrape the weather website for daily barometric pressure readings.
 3. **Data Validation & Calibration (`dataValidation.py`):**
-* Reads CSVs from `data_downloads/`.
-* Cleans and validates the data (Converts types. Also handles erroneous and missing values).
-* Retrieves external barometric data (by calling `weatherStation.py`).
-* Merges external weather data with the logger data based on date.
-* Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
-* Monitors logger units battery voltage (latest reading) against site-specific thresholds.
-* Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & abTests.html) saved in `transformed_data/`.
+   * Reads CSVs from `data_downloads/`.
+   * Cleans and validates the data (converts types, handles erroneous and missing values).
+   * Retrieves external barometric data (by calling `weatherStation.py`).
+   * Merges external weather data with the logger data based on date.
+   * Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
+   * Monitors telemetry unit battery voltage against low voltage thresholds.
+   * Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & `abTestsReport.html`) saved in `transformed_data/`.
 4. **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients.
+
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
 
 ## Threshold Calculations
-In the data validation process, thresholds have been applied to ensure accurate depth adjustments:
-- Minimum depth threshold: 0.3 meters (prevents corrections in very shallow or dry pools).
-- Minimum barometric difference threshold: 5 hPa (avoids adjustments due to sensor noise).
+Depth adjustments are applied using a four-tier system based on the difference between the logger's internal barometric sensor and the external weather station:
 
-Users should verify if there are any local variations between observed logger values and weather station data post deployment. If significant discrepancies are noted (e.g., individual instruments, elevation differences or microclimates), consider modifying these thresholds in `dataValidation.py` and `testsAB.py` to better suit your specific environment. The goal is to align the deployed, field calibrated AquaTroll with the observed weather station hPa value.
+| Pressure Difference | Behaviour |
+|---|---|
+| ≤ 5 hPa | No adjustment — within sensor noise tolerance |
+| 5–20 hPa | Adjustment applied using AquaTroll formula |
+| 20–50 hPa | No adjustment — excessive drift flagged in comments |
+| > 50 hPa | No adjustment — possible sensor failure |
+
+An additional minimum depth threshold of **0.3 metres** prevents corrections in very shallow or dry pools.
+
+Users should verify if there are any local variations between observed logger values and weather station data post deployment. If significant discrepancies are noted (e.g., individual instruments, elevation differences or microclimates), consider modifying these thresholds in `dataValidation.py` and `testsAB.py` to better suit your specific environment. The goal is to align the deployed, field-calibrated AquaTroll with the observed weather station hPa value.
 
 ## Quality Assurance and Testing
-To maintain data integrity, the project includes A/B tests implemented in `testsAB.py`. These tests validate:
-- Connectivity to data sources
-- Data structure consistency
-- Calculation accuracy
-- Site Availability
-- Statistical anomaly detection (flagging depth changes >15% and pressure changes >2%)
-- Battery voltage health (low voltage warnings)
+`testsAB.py` runs 11 tests when the pipeline executes, generating a self-contained HTML report (`abTestsReport.html`) saved to `transformed_data/` and emailed to the validation recipient list. The report is designed to make monthly QAQC straightforward for non-technical reviewers with a clear PASS / WARNING / FAIL status.
 
-The tests generate an HTML report (`abTestsReport.html`) summarising results. It is automatically generated whenever runPipeline.py is executed and saves results in the transformed_data folder.
+The report is stamped with the machine name, username, and timestamp for audit trail purposes and is structured into the following sections:
+
+The report works through six areas. First it checks that the pipeline can actually reach everything it needs to — the weather website, the logger portal, and the data download pages. It then confirms the scraped data landed in the right format, looking for the expected columns and table positions in both the weather and logger files. Battery voltage is checked for each active site, with a warning triggered if any reading drops below the threshold. The site list is verified against your configuration to make sure no locations are missing or unexpectedly disabled. To confirm the maths are on point, I run three depth readings taken randomly, recalculated and then compared against the pipeline's output. Any discrepancy greater than 2 cm is flagged. Finally, the data itself is scanned for anything unusual: depth changes greater than 15% or pressure changes greater than 2% between readings are also highlighted for review, with a note against any depth spike that coincided with a rain event.
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-   git clone <your-repo-url>
-   cd AquaTroll.Telemetry.Pipeline
+git clone <your-repo-url>
+cd AquaTroll.Telemetry.Pipeline
 ```
 
 2. Create and activate virtual environment:
 ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Linux/Mac
+python3 -m venv venv
+source venv/bin/activate  # On Linux/Mac
 ```
 
 3. Install dependencies:
 ```bash
-   pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 4. Configure environment:
 ```bash
-   cp .env.example .env
-   # Edit .env with your credentials and site configuration
+cp .env.example .env
+# Edit .env with your credentials and site configuration
 ```
 
 5. Test the pipeline:
 ```bash
-   python runPipeline.py
+python runPipeline.py
 ```
 
 ## Configuration
-  ### Required Environment Variables
-    LOGIN_URL="https://your-portal-url.com/login"
-    LOGIN_USERNAME="your_username"
-    LOGIN_PASSWORD="your_password"
-    PAUSE_SECONDS=20  # Delay between site scrapes (seconds)
-    WEATHER_URL="http://www.independentWeatherStation//your-station-id.shtml"
-    RECIPIENT_VALIDATION="team@company.com,supervisor@company.com"
-    RECIPIENT_DATABASE="database-upload@company.com"
-    VALIDATION_EMAIL_SUBJECT="Logger Validation Report"
-    DATABASE_EMAIL_SUBJECT="{month} Depth Data"
-    DATABASE_EMAIL_BODY="For Upload To Database: {filename}"
-    SITES_CONFIG='{"SITE_001": {"display_name": "Site 1", "nav_option": "12345", "depth_conversion_type": "default", "pressure_unit": "hpa", "enabled": true, "level_channel_id": 123456, "baro_channel_id": 123457, "battery_channel_id": 123458}}'
+### Required Environment Variables
+```
+LOGIN_URL="https://your-portal-url.com/login"
+LOGIN_USERNAME="your_username"
+LOGIN_PASSWORD="your_password"
+PAUSE_SECONDS=3  # Delay between site scrapes (seconds) — prevents rapid sequential portal requests
+WEATHER_URL="http://www.independentWeatherStation//your-station-id.shtml"
+RECIPIENT_VALIDATION="team@company.com,supervisor@company.com"
+RECIPIENT_DATABASE="database-upload@company.com"
+VALIDATION_EMAIL_SUBJECT="Logger Validation Report"
+DATABASE_EMAIL_SUBJECT="{month} Depth Data"
+DATABASE_EMAIL_BODY="For Upload To Database: {filename}"
+SITES_CONFIG='{
+  "Site1": {
+    "display_name": "Site 1",
+    "nav_option": "12345",
+    "depth_conversion_type": "default",
+    "pressure_unit": "hpa",
+    "enabled": true,
+    "level_channel_id": 10000,
+    "baro_channel_id": 10001,
+    "battery_channel_id": 10002
+  }
+}'
+```
 
-  **Configuration Notes**
-    
-    *Site ID (the key):*
-        Must match the CSV filename without extension
-        CSV files will be named: {site_id}.csv and baro{site_id}.csv
-        Used as "Sample Point" name in output files
-        Example: "SITE_001" creates SITE_001.csv and baroSITE_001.csv
-    *Depth Conversion Types:*
-        "default": Converts feet to meters (multiply by 0.3048) - standard AquaTroll output
-        "divide_by_100": Converts centimeters to meters (divide by 100) - for cm-based sensors
-    *Pressure Units:*
-        "hpa": Hectopascals (default for most barometric pressure sensors)
-        "psi": Pounds per square inch (for some sensor models like certain AquaTroll configurations)
-    *Enabled Flag:*
-        true: Site will be scraped, validated, and included in reports
-        false: Site will be skipped (use for sites not yet deployed or temporarily offline)
-    *Adding New Sites*
-        To add a new monitoring site:
-            Get the nav_option from your logger portal
-            Determine the pressure unit your sensor uses (hpa or psi)
-            Determine depth conversion needed (default for feet, divide_by_100 for cm)
-            Add entry to SITES_CONFIG:
+### Configuration Notes
 
-## Automating Pipeline with Cron (Linux/Raspberry Pi)
+**Site ID (the key)**
+Must match the CSV filename without extension. CSV files will be named `{site_id}.csv` and `baro{site_id}.csv`. Used as the "Sample Point" name in output files. Example: `"Site1"` creates `Site1.csv` and `baroSite1.csv`.
 
-To setup a scheduled run:
+**Depth Conversion Types**
 
-1.  Open the crontab editor for the current user:
+| Value | Behaviour |
+|---|---|
+| `"default"` | Converts feet to metres (× 0.3048) — standard AquaTroll output |
+| `"divide_by_100"` | Converts centimetres to metres (÷ 100) — for cm-based sensors |
+| `"metres"` | No conversion applied — data already in metres |
 
-    ```bash
+**Pressure Units**
 
-    crontab -e
+| Value | Behaviour |
+|---|---|
+| `"hpa"` | Hectopascals — default for most barometric pressure sensors |
+| `"psi"` | Pounds per square inch — for some AquaTroll configurations |
 
-    ```
-2.  Add the following line at the bottom of the file to schedule the script. This example runs at 17:00 (5 PM) on the 28th of every month:
-    ```cron
-    # Run AquaTroll Pipeline monthly
-    0 17 28 * * /path/to/your/project/AquaTroll.Telemetry.Pipeline/venv/bin/python /path/to/your/project/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /path/to/your/project/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
-    ```
-    *   **Important:** Replace `/path/to/your/project/` with the actual absolute path to where you cloned the `AquaTroll.Telemetry.Pipeline` directory (e.g., `/home/pi/`).
-    *   This command explicitly uses the Python interpreter inside your virtual environment (`venv/bin/python`).
-    *   Output and errors from the script will be appended (`>>`) to `cron.log` in the project directory.
+**Enabled Flag**
+`true`: site will be scraped, validated, and included in reports. `false`: site will be skipped (use for sites not yet deployed or temporarily offline).
 
-3.  Save and close the editor.
-    *   For `nano`: Press `Ctrl+O`, Enter, then `Ctrl+X`.
-    *   You should see a message like `crontab: installing new crontab`.
-4.  **Verify the cron job was added:** List the active cron jobs for the user:
-    ```bash
-    crontab -l
-    ```
-    You should see the line you just added listed in the output. This confirms the schedule is active.
+**SITES_CONFIG Fields**
+
+| Field | Description |
+|---|---|
+| `display_name` | Human-readable site name used in logs |
+| `nav_option` | Portal navigation option ID |
+| `depth_conversion_type` | Depth unit conversion to apply (see above) |
+| `pressure_unit` | Pressure unit of the logger's barometric sensor |
+| `enabled` | Include this site in the pipeline run |
+| `level_channel_id` | Channel ID for depth data download |
+| `baro_channel_id` | Channel ID for barometric pressure data download |
+| `battery_channel_id` | Channel ID for battery voltage data download |
+
+**Adding New Sites**
+
+To add a new monitoring site:
+1. Get the `nav_option` from your logger portal.
+2. Determine the pressure unit your sensor uses (`hpa` or `psi`).
+3. Determine the depth conversion needed (`default` for feet, `divide_by_100` for cm, `metres` if already in metres).
+4. Obtain the `level_channel_id`, `baro_channel_id`, and `battery_channel_id` from the portal.
+5. Add the entry to `SITES_CONFIG` in your `.env` file.
+
+## Automating Pipeline with Cron (Linux)
+
+To set up a scheduled run:
+
+1. Open the crontab editor for the current user:
+```bash
+crontab -e
+```
+
+2. Add the following line at the bottom of the file to schedule the script. This example runs at 17:00 (5 PM) on the 28th of every month:
+```cron
+# Run AquaTroll Pipeline monthly
+0 17 28 * * /path/to/your/project/AquaTroll.Telemetry.Pipeline/venv/bin/python /path/to/your/project/AquaTroll.Telemetry.Pipeline/runPipeline.py >> /path/to/your/project/AquaTroll.Telemetry.Pipeline/cron.log 2>&1
+```
+
+   * **Important:** Replace `/path/to/your/project/` with the actual absolute path to where you cloned the `AquaTroll.Telemetry.Pipeline` directory (e.g., `/home/pi/`).
+   * This command explicitly uses the Python interpreter inside your virtual environment (`venv/bin/python`).
+   * Output and errors from the script will be appended (`>>`) to `cron.log` in the project directory.
+
+3. Save and close the editor.
+   * For `nano`: Press `Ctrl+O`, Enter, then `Ctrl+X`.
+   * You should see a message like `crontab: installing new crontab`.
+
+4. **Verify the cron job was added:**
+```bash
+crontab -l
+```
+You should see the line you just added listed in the output. This confirms the schedule is active.

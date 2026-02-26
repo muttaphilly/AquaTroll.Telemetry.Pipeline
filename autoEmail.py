@@ -97,13 +97,11 @@ def send_email_with_attachments(recipient_emails, subject, body, attachment_path
         if 'server' in locals() and server:
             server.quit()
 
-
 def parse_email_list(email_string):
     """Parse comma-separated email string into list."""
     if not email_string:
         return []
     return [email.strip() for email in email_string.split(',') if email.strip()]
-
 
 def send_validated_data_email(csv_path, html_report_path=None):
     """
@@ -134,10 +132,9 @@ def send_validated_data_email(csv_path, html_report_path=None):
         attachments_list.append(f"* {os.path.basename(html_report_path)}")
     
     # Format body with bullet points
-    body = f"Please find attached validated depth data for {current_month}:\n" + "\n".join(attachments_list)
+    body = f"Please find attached validated depth data for {current_month}:\n" + "\n".join(attachments_list) + "\n\nOpen source project: https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
     
     return send_email_with_attachments(recipients, subject, body, attachments)
-
 
 def send_database_email(attachment_path):
     """
