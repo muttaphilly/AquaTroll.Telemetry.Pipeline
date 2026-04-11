@@ -89,8 +89,7 @@ def setup_logging(log_file: Optional[str] = None) -> logging.Logger:
 # --- Datetime Formatting ---
 def format_datetime_separated(dt_series: pd.Series) -> pd.Series:
     """
-    Format datetime by separating date and time components.
-    Avoids Windows strftime spacing issues with AM/PM.
+    Format datetime by separating date and time components. 
     """
     def format_single(dt):
         if pd.isna(dt):
@@ -100,9 +99,11 @@ def format_datetime_separated(dt_series: pd.Series) -> pd.Series:
             return dt
         date_part = dt.strftime('%d/%m/%Y')
         hour = dt.hour
+        # Dear old gods and the new pls let this patch the stoopid windows 11 double space bug    
         hour_12 = 12 if hour == 0 else (hour if hour <= 12 else hour - 12)
         am_pm = 'AM' if hour < 12 else 'PM'
-        time_part = f"{hour_12}:{dt.minute:02d}:{dt.second:02d} {am_pm}"
+        time_part = f"{hour_12:02d}:{dt.minute:02d}:{dt.second:02d} {am_pm}"
+        # Please. 
         return f"{date_part} {time_part}"
     
     return dt_series.apply(format_single)
