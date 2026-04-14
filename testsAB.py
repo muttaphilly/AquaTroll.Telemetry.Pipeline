@@ -4,7 +4,7 @@ A/B tests for the data scraping, validation & processing pipeline.
 Monthly verification of script performance through testing of:
 - Data connectivity and authentication
 - Validation of returned data structures
-- Battery health check
+- Battery health checks
 - Verification of depth calculations
 - Site availability checks
 - Flagging of any statistical anomalies
@@ -46,18 +46,18 @@ USERNAME = getuser()
 # TEST DESCRIPTIONS
 # ============================================================================
 TEST_DESCRIPTIONS = {
-    "Weather Website Accessibility": (
+    "Weather Website Access": (
         "Verifies if weather website accessible "
-        "and returns received HTTP response code."
+        "and returns the received HTTP response code."
     ),
-    "Logger Portal Authentication": (
-        "Checks connectivity & provided authentication credentials allow successful "
-        "login to the logger portal website."
+    "Logger Portal Access": (
+        "Checks connectivity & provided authentication credentials allow for a "
+        "successful login to the portal website."
     ),
-    "Logger Portal Node Selection": (
-        "Verifies ability to navigate and identify display structure in use (node or tables)"
+    "Logger Portal Navigation": (
+        "Verifies ability to navigate and identify which display structure is in use (node or tables)"
     ),
-    "Logger Portal CSV Download": (
+    "Logger Portal Data Extraction": (
         "Confirms the presence and functionality of CSV download button for data "
         "extraction."
     ),
@@ -67,30 +67,28 @@ TEST_DESCRIPTIONS = {
         "data at position 4."
     ),
     "Logger Data Structure": (
-        "Checks that downloaded logger CSV files contain required columns for "
-        "Date, Time, and Level measurements."
+        "Checks that downloaded logger CSV files contain all required columns for"
+        "for analysis (Date, Time, Level and Battery.)"
     ),
-    "Battery Voltage Check": (
-        "Verifies battery voltage levels for each enabled site, flagging warnings if below "
-        "thresholds (Logger: <3.5V, Starlink: <13.1V)."
+    "Network Power": (
+        "Verifies battery voltage across {n_sites} active sites."
     ),
     "Site Configuration": (
-        "Checks site availability from SITES_CONFIG env variable, "
-        "by reading the 'enabled' flag."
+        "Checks which sites are setup by reading from the SITES_CONFIG env variable, "
     ),
-    "Network Availability Check": (
-    "Locates last recorded depth reading for each enabled site. "
-    "Use as a prompt to investigate whether pool has gone dry or equipment is faulty"
+    "Network Availability": (
+        "Locates last recorded depth reading for each enabled site. "
+        "Helpful for determining whether a pool has gone dry or if the equipment is faulty."
     ),
-    "Depth Calculation Verification": (
+    "Depth Adjustment Verification": (
         "Independently tests barometric pressure adjustments using downloaded files "
         "then cross-checks results against the pipeline's final csv results. "
         "Applies thresholds: depth > 0.3m and baro difference > 5 hPa to prevent "
         "corrections from very shallow/dry pools and sensor noise."
     ),
-    "Statistical Anomaly Detection": (
-        "Analyses validated data for statistical anomalies, flagging depth changes "
-        ">15% and pressure changes >2% for review."
+    "Monthly Statistical Anomalies": (
+        "Analyses validated data for any statistical anomalies; Namely by flagging "
+        "depth changes >15%, unrealistic values and/or pressure changes >2% for review."
     )
 }
 # ============================================================================
@@ -136,7 +134,7 @@ HTML_HEADER = """
 """
 HTML_FOOTER = """
     <div class="footer">
-        <p>End of Test Report: AquaTroll Depth Data Pipeline</p>
+        <p>End of Report: AquaTroll Depth Data Pipeline</p>
     </div>
 </body>
 </html>
@@ -299,8 +297,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         """Test connectivity to weather website."""
         if not self.weather_url:
             self.record_result(
-                "Weather Website Accessibility",
-                "Connectivity",
+                "Weather Website Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 "WEATHER_URL not configured in environment"
             )
@@ -319,46 +317,46 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if response.status_code == 200:
                 if table:
                     self.record_result(
-                        "Weather Website Accessibility",
-                        "Connectivity",
+                        "Weather Website Access",
+                        "Data Pipeline Tests",
                         "PASS",
                         f"Successfully connected (HTTP {response.status_code}, {response_time:.2f}s)"
                     )
                 else:
                     self.record_result(
-                        "Weather Website Accessibility",
-                        "Connectivity",
+                        "Weather Website Access",
+                        "Data Pipeline Tests",
                         "WARNING",
                         f"Connected but table.data not found (HTTP {response.status_code})"
                     )
             else:
                 self.record_result(
-                    "Weather Website Accessibility",
-                    "Connectivity",
+                    "Weather Website Access",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Weather website returned HTTP {response.status_code}"
                 )
                 self.fail(f"Weather website returned HTTP {response.status_code}")
         except requests.exceptions.Timeout:
             self.record_result(
-                "Weather Website Accessibility",
-                "Connectivity",
+                "Weather Website Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 "Connection timeout after 10 seconds"
             )
             self.fail("Connection timeout")
         except requests.exceptions.RequestException as e:
             self.record_result(
-                "Weather Website Accessibility",
-                "Connectivity",
+                "Weather Website Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Connection error: {str(e)}"
             )
             self.fail(f"Connection error: {e}")
         except Exception as e:
             self.record_result(
-                "Weather Website Accessibility",
-                "Connectivity",
+                "Weather Website Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Unexpected error: {str(e)}"
             )
@@ -367,8 +365,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         """Test authentication to the logger portal using HTTP."""
         if not self.login_url:
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "SKIP",
                 "LOGIN_URL not configured in environment"
             )
@@ -378,8 +376,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         login_password = os.getenv("LOGIN_PASSWORD", "")
         if not login_username or not login_password:
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 "LOGIN_USERNAME or LOGIN_PASSWORD not configured"
             )
@@ -395,8 +393,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             response = session.get(self.login_url, headers=headers, timeout=10)
             if response.status_code != 200:
                 self.record_result(
-                    "Logger Portal Authentication",
-                    "Connectivity",
+                    "Logger Portal Access",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Login page not accessible (HTTP {response.status_code})"
                 )
@@ -427,8 +425,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Check if redirected away from login page
             if 'logon.aspx' in login_response.url.lower():
                 self.record_result(
-                    "Logger Portal Authentication",
-                    "Connectivity",
+                    "Logger Portal Access",
+                    "Data Pipeline Tests",
                     "FAIL",
                     "Authentication failed - credentials rejected (remained on login page)"
                 )
@@ -438,10 +436,10 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Success. Store session for other tests (use class variable!)
             self.__class__.auth_session = session
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "PASS",
-                f"Successfully authenticated to logger portal",
+                f"Successfully authenticated with logger portal",
                 {
                     'session_cookie': bool(session.cookies),
                     'final_url': login_response.url
@@ -449,8 +447,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             )
         except requests.exceptions.Timeout:
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 "Connection timeout"
             )
@@ -458,8 +456,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail("Connection timeout")
         except requests.exceptions.RequestException as e:
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Connection error: {str(e)}"
             )
@@ -467,8 +465,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail(f"Connection error: {e}")
         except Exception as e:
             self.record_result(
-                "Logger Portal Authentication",
-                "Connectivity",
+                "Logger Portal Access",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Authentication error: {str(e)}"
             )
@@ -478,8 +476,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         """Test ability to navigate to and select nodes/tables in the logger portal."""
         if not hasattr(self.__class__, 'auth_session') or self.__class__.auth_session is None:
             self.record_result(
-                "Logger Portal Node Selection",
-                "Connectivity",
+                "Logger Portal Navigation",
+                "Data Pipeline Tests",
                 "SKIP",
                 "Authentication session not available"
             )
@@ -490,8 +488,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                          if config.get('enabled', False)}
         if not enabled_sites:
             self.record_result(
-                "Logger Portal Node Selection",
-                "Connectivity",
+                "Logger Portal Navigation",
+                "Data Pipeline Tests",
                 "SKIP",
                 "No enabled sites configured"
             )
@@ -503,8 +501,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         nav_option = test_site_config.get('nav_option')
         if not nav_option:
             self.record_result(
-                "Logger Portal Node Selection",
-                "Connectivity",
+                "Logger Portal Navigation",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Site {test_site_name} missing nav_option in configuration"
             )
@@ -521,8 +519,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             response = self.__class__.auth_session.get(channel_url, headers=headers, timeout=15)
             if response.status_code != 200:
                 self.record_result(
-                    "Logger Portal Node Selection",
-                    "Connectivity",
+                    "Logger Portal Navigation",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Failed to navigate to channel (HTTP {response.status_code})"
                 )
@@ -541,8 +539,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 # Store response for download test
                 self.__class__.channel_response = response
                 self.record_result(
-                    "Logger Portal Node Selection",
-                    "Connectivity",
+                    "Logger Portal Navigation",
+                    "Data Pipeline Tests",
                     "PASS",
                     f"Successfully navigated to channel {nav_option} for site {test_site_name} (validation score: {validation_score}/2)",
                     {
@@ -555,16 +553,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             else:
                 self.__class__.channel_response = None
                 self.record_result(
-                    "Logger Portal Node Selection",
-                    "Connectivity",
+                    "Logger Portal Navigation",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Channel page missing expected elements (score: {validation_score}/2)"
                 )
                 self.fail("Channel page validation failed")
         except requests.exceptions.Timeout:
             self.record_result(
-                "Logger Portal Node Selection",
-                "Connectivity",
+                "Logger Portal Navigation",
+                "Data Pipeline Tests",
                 "FAIL",
                 "Navigation timeout"
             )
@@ -572,8 +570,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail("Navigation timeout")
         except requests.exceptions.RequestException as e:
             self.record_result(
-                "Logger Portal Node Selection",
-                "Connectivity",
+                "Logger Portal Navigation",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Navigation error: {str(e)}"
             )
@@ -583,8 +581,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         """Test presence of CSV download functionality."""
         if not hasattr(self.__class__, 'channel_response') or self.__class__.channel_response is None:
             self.record_result(
-                "Logger Portal CSV Download",
-                "Connectivity",
+                "Logger Portal Data Extraction",
+                "Data Pipeline Tests",
                 "SKIP",
                 "No channel navigation response available"
             )
@@ -610,37 +608,37 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             # Both must be present
             if has_channel_selector and has_csv_button:
                 self.record_result(
-                    "Logger Portal CSV Download",
-                    "Connectivity",
+                    "Logger Portal Data Extraction",
+                    "Data Pipeline Tests",
                     "PASS",
                     f"CSV download capability verified: Table selector present and CSV/export button found"
                 )
             elif has_csv_button and not has_channel_selector:
                 self.record_result(
-                    "Logger Portal CSV Download",
-                    "Connectivity",
+                    "Logger Portal Data Extraction",
+                    "Data Pipeline Tests",
                     "WARNING",
                     f"CSV button found but no table selection mechanism detected"
                 )
             elif has_channel_selector and not has_csv_button:
                 self.record_result(
-                    "Logger Portal CSV Download",
-                    "Connectivity",
+                    "Logger Portal Data Extraction",
+                    "Data Pipeline Tests",
                     "WARNING",
                     f"Table selection present but CSV/export button not found"
                 )
             else:
                 self.record_result(
-                    "Logger Portal CSV Download",
-                    "Connectivity",
+                    "Logger Portal Data Extraction",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Neither table selection nor CSV button found on channel page"
                 )
                 self.fail("CSV download functionality not available")
         except Exception as e:
             self.record_result(
-                "Logger Portal CSV Download",
-                "Connectivity",
+                "Logger Portal Data Extraction",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Error checking download functionality: {str(e)}"
             )
@@ -654,7 +652,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         if not self.weather_url:
             self.record_result(
                 "Weather Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "SKIP",
                 "WEATHER_URL not configured - skipping test"
             )
@@ -668,7 +666,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if response.status_code != 200:
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Could not access weather website (HTTP {response.status_code})"
                 )
@@ -680,7 +678,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if not table:
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     "Table with class 'data' not found in HTML"
                 )
@@ -691,7 +689,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if len(data_rows) == 0:
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     "No data rows found in weather table"
                 )
@@ -709,7 +707,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if not first_valid_row:
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     "No valid data row found in weather table"
                 )
@@ -761,7 +759,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if position_4_valid and position_15_valid and position_21_valid:
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "PASS",
                     f"Weather table structure verified: {total_cells} columns, rainfall at position 4 ({position_4_value} mm), pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
                 )
@@ -775,7 +773,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     issues.append(f"Position 21 invalid (got: '{position_21_value}')")
                 self.record_result(
                     "Weather Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Weather table data validation failed: {', '.join(issues)}"
                 )
@@ -783,7 +781,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except requests.exceptions.Timeout:
             self.record_result(
                 "Weather Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 "Connection timeout accessing weather website"
             )
@@ -791,7 +789,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except requests.exceptions.RequestException as e:
             self.record_result(
                 "Weather Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Connection error: {str(e)}"
             )
@@ -799,7 +797,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except Exception as e:
             self.record_result(
                 "Weather Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Error parsing weather data: {str(e)}"
             )
@@ -809,7 +807,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Logger Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 "data_downloads directory not found"
             )
@@ -819,7 +817,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         if not csv_files:
             self.record_result(
                 "Logger Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 "No logger CSV files found in data_downloads"
             )
@@ -835,18 +833,26 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 'Level(RAW)[Main Buffer] (ft)',
                 'Level in metres (m)'
             ]
+            battery_column_prefix = 'Main Battery(MIN)[Main Buffer]'
             # Check base columns
             base_present = all(col in df.columns for col in base_columns)
             # Check at least one level column variant exists
             level_present = any(col in df.columns for col in level_column_options)
+            # Check battery column (prefix match — unit suffix varies)
+            battery_col = next(
+                (col for col in df.columns if col.strip().startswith(battery_column_prefix)),
+                None
+            )
+            battery_present = battery_col is not None
             if base_present and level_present:
-                # Find which level column is present
                 level_col = next((col for col in level_column_options if col in df.columns), None)
+                batt_note = f", {battery_col}" if battery_present else " (battery column not found — WARNING)"
+                overall_status = "PASS" if battery_present else "WARNING"
                 self.record_result(
                     "Logger Data Structure",
-                    "Data Structure",
-                    "PASS",
-                    f"Logger data has required columns: Date, Time, {level_col}"
+                    "Data Pipeline Tests",
+                    overall_status,
+                    f"Logger data has required columns: Date, Time, {level_col}{batt_note}"
                 )
             else:
                 missing = []
@@ -857,7 +863,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     missing.append(f"Level column (expected one of: {', '.join(level_column_options)})")
                 self.record_result(
                     "Logger Data Structure",
-                    "Data Structure",
+                    "Data Pipeline Tests",
                     "FAIL",
                     f"Missing required columns: {', '.join(missing)}"
                 )
@@ -865,118 +871,245 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except Exception as e:
             self.record_result(
                 "Logger Data Structure",
-                "Data Structure",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Error reading logger data: {str(e)}"
             )
             self.fail(f"Failed to read logger data: {e}")
     def test_07_battery_voltage_check(self):
-        """Check battery voltage for enabled sites."""
+        """Check battery voltage for enabled sites.
+
+        Thresholds (ERP3 / ERP4 use Starlink ~13V; all other sites use logger ~3.5V):
+          WARNING : voltage < warn_threshold  OR  last reading > 7 days ago
+          FAIL    : voltage < fail_threshold  OR  last reading > 28 days ago
+          PASS    : all checks satisfied
+
+        The battery_results list carries a 'voltage_history' key (list of
+        {date, voltage} dicts) for any site whose status is WARNING or FAIL,
+        so the HTML renderer can draw a trend graph.
+        """
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
-                "Battery Voltage Check",
-                "Battery Voltage",
+                "Network Power",
+                "Hardware Tests",
                 "FAIL",
                 "data_downloads directory not found"
             )
             self.fail("data_downloads directory not available")
             return
+
         enabled_sites = {
             name: config for name, config in self.site_config.items()
             if config.get('enabled', False)
         }
         if not enabled_sites:
             self.record_result(
-                "Battery Voltage Check",
-                "Battery Voltage",
+                "Network Power",
+                "Hardware Tests",
                 "SKIP",
                 "No enabled sites configured"
             )
             self.skipTest("No enabled sites available")
             return
+
+        # Per-site threshold config.
+        # ERP3 / ERP4 are Starlink-powered; everything else is logger battery.
+        STARLINK_SITES = {'ERP3', 'ERP4'}
+        THRESHOLDS = {
+            'starlink': {'warn': 13.2, 'fail': 13.05},
+            'logger':   {'warn': 3.6,  'fail': 3.5},
+        }
+        STALE_WARN_DAYS = 7
+        STALE_FAIL_DAYS = 28
+
+        now = datetime.now()
         battery_results = []
-        critical_fail_count = 0 # Missing file or read error
-        warning_count = 0 # Missing column, no data, or low voltage
+        fail_count    = 0
+        warning_count = 0
+
         for site_id, config in enabled_sites.items():
             csv_path = os.path.join(self.data_downloads_path, f"{site_id}.csv")
+
+            # ── missing file ────────────────────────────────────────────────
             if not os.path.exists(csv_path):
                 battery_results.append({
                     'site': site_id,
                     'status': 'FAIL',
-                    'details': 'CSV file not found'
+                    'details': 'CSV file not found',
+                    'threshold_warn': 'N/A',
+                    'threshold_fail': 'N/A',
                 })
-                critical_fail_count += 1
+                fail_count += 1
                 continue
+
             try:
                 df = pd.read_csv(csv_path)
-                battery_col = None
-                for col in df.columns:
-                    stripped_col = col.strip()
-                    if stripped_col.startswith('Main Battery(MIN)[Main Buffer]'):
-                        battery_col = col
-                        break
+
+                # ── locate battery column ───────────────────────────────────
+                battery_col = next(
+                    (col for col in df.columns
+                     if col.strip().startswith('Main Battery(MIN)[Main Buffer]')),
+                    None
+                )
+
+                site_type = 'starlink' if site_id in STARLINK_SITES else 'logger'
+                thresh_warn = THRESHOLDS[site_type]['warn']
+                thresh_fail = THRESHOLDS[site_type]['fail']
+
                 if battery_col is None:
                     battery_results.append({
                         'site': site_id,
                         'status': 'WARNING',
-                        'details': 'Battery voltage column not found'
+                        'details': 'Battery voltage column not found',
+                        'threshold_warn': thresh_warn,
+                        'threshold_fail': thresh_fail,
                     })
                     warning_count += 1
                     continue
-                # Extract latest valid battery value
-                battery_series = pd.to_numeric(df[battery_col], errors='coerce').dropna()
-                if battery_series.empty:
+
+                # ── parse dates so we can check data recency ────────────────
+                if 'Date' in df.columns and 'Time' in df.columns:
+                    df['_datetime'] = pd.to_datetime(
+                        df['Date'] + ' ' + df['Time'],
+                        dayfirst=True,
+                        errors='coerce'
+                    )
+                else:
+                    df['_datetime'] = pd.NaT
+
+                # ── build a clean series aligned on datetime ─────────────────
+                battery_numeric = pd.to_numeric(df[battery_col], errors='coerce')
+                valid_mask      = battery_numeric.notna()
+                battery_valid   = battery_numeric[valid_mask]
+                dates_valid     = df['_datetime'][valid_mask]
+
+                # ── check data recency (independent of voltage) ─────────────
+                if df['_datetime'].notna().any():
+                    latest_dt   = df['_datetime'].max()
+                    days_since  = (now - latest_dt).days
+                else:
+                    days_since  = None   # unknown
+
+                recency_status = 'PASS'
+                if days_since is None or days_since > STALE_FAIL_DAYS:
+                    recency_status = 'FAIL'
+                elif days_since > STALE_WARN_DAYS:
+                    recency_status = 'WARNING'
+
+                # ── no valid battery readings at all ────────────────────────
+                if battery_valid.empty:
+                    # Still report recency-based status if we can
+                    effective_status = recency_status if recency_status == 'FAIL' else 'WARNING'
+                    detail_msg = 'No valid battery data'
+                    if days_since is not None:
+                        detail_msg += f' (last datapoint {days_since}d ago)'
                     battery_results.append({
                         'site': site_id,
-                        'status': 'WARNING',
-                        'details': 'No valid battery data'
+                        'status': effective_status,
+                        'details': detail_msg,
+                        'threshold_warn': thresh_warn,
+                        'threshold_fail': thresh_fail,
                     })
-                    warning_count += 1
+                    if effective_status == 'FAIL':
+                        fail_count += 1
+                    else:
+                        warning_count += 1
                     continue
-                current_voltage = battery_series.iloc[-1] # Most recent reading
-                pressure_unit = config.get('pressure_unit', 'hpa').lower()
-                threshold = 3.5 if pressure_unit == 'hpa' else 13.1
-                if current_voltage < threshold:
-                    status = 'WARNING'
-                    warning_count += 1
+
+                # ── current voltage = most recent valid reading by datetime ──
+                aligned = pd.DataFrame({
+                    'datetime': dates_valid,
+                    'voltage':  battery_valid
+                }).dropna(subset=['datetime']).sort_values('datetime', ascending=True)
+
+                if aligned.empty:
+                    # Fall back to positional if no datetimes
+                    current_voltage = round(float(battery_valid.iloc[-1]), 3)
+                    last_reading_str = 'unknown'
                 else:
-                    status = 'PASS'
-                battery_results.append({
+                    current_voltage  = round(float(aligned['voltage'].iloc[-1]), 3)
+                    latest_batt_dt   = aligned['datetime'].iloc[-1]
+                    last_reading_str = latest_batt_dt.strftime('%d/%m/%Y %H:%M')
+
+                # ── voltage-based status ─────────────────────────────────────
+                if current_voltage < thresh_fail:
+                    voltage_status = 'FAIL'
+                elif current_voltage < thresh_warn:
+                    voltage_status = 'WARNING'
+                else:
+                    voltage_status = 'PASS'
+
+                # ── combine voltage + recency into worst-case status ─────────
+                priority = {'FAIL': 2, 'WARNING': 1, 'PASS': 0}
+                effective_status = max(
+                    [voltage_status, recency_status],
+                    key=lambda s: priority[s]
+                )
+
+                if effective_status == 'FAIL':
+                    fail_count += 1
+                elif effective_status == 'WARNING':
+                    warning_count += 1
+
+                result = {
                     'site': site_id,
-                    'threshold': threshold,
-                    'current_voltage': round(current_voltage, 2),
-                    'status': status
-                })
+                    'status': effective_status,
+                    'threshold_warn': thresh_warn,
+                    'threshold_fail': thresh_fail,
+                    'current_voltage': current_voltage,
+                    'last_reading': last_reading_str,
+                    'days_since': days_since,
+                    'details': '',
+                }
+
+                # ── voltage history for trend graph (WARNING / FAIL only) ───
+                if effective_status in ('WARNING', 'FAIL'):
+                    history_df = pd.DataFrame({
+                        'datetime': dates_valid,
+                        'voltage': battery_valid
+                    }).dropna().sort_values('datetime')
+                    # Keep last 28 days
+                    cutoff = now - pd.Timedelta(days=STALE_FAIL_DAYS)
+                    history_df = history_df[history_df['datetime'] >= cutoff]
+                    result['voltage_history'] = [
+                        {
+                            'date':    row['datetime'].strftime('%d/%m'),
+                            'voltage': round(float(row['voltage']), 3)
+                        }
+                        for _, row in history_df.iterrows()
+                    ]
+
+                battery_results.append(result)
+
             except Exception as e:
                 battery_results.append({
                     'site': site_id,
                     'status': 'FAIL',
-                    'details': f"Error reading file: {str(e)}"
+                    'details': f"Error reading file: {str(e)}",
+                    'threshold_warn': 'N/A',
+                    'threshold_fail': 'N/A',
                 })
-                critical_fail_count += 1
-        # Determine overall status and accurate summary
-        if critical_fail_count > 0:
+                fail_count += 1
+
+        # ── overall status ───────────────────────────────────────────────────
+        if fail_count > 0:
             overall_status = "FAIL"
         elif warning_count > 0:
             overall_status = "WARNING"
         else:
             overall_status = "PASS"
-        details = (
-            f"Checked {len(enabled_sites)} enabled sites: "
-            f"{critical_fail_count} critical failures (no available data), "
-            f"{warning_count} warnings (low voltage or missing data)"
-        )
+
         self.record_result(
-            "Battery Voltage Check",
-            "Battery Voltage",
+            "Network Power",
+            "Hardware Tests",
             overall_status,
-            details,
+            "",
             {'battery_results': battery_results}
         )
-        if critical_fail_count > 0:
+        if fail_count > 0:
             self.fail(
-                f"{critical_fail_count} site(s) had critical failures "
-                "(missing CSV or read error)"
+                f"{fail_count} site(s) failed battery check "
+                "(low voltage, missing CSV, or stale data)"
             )
    
     # ========================================================================
@@ -1003,7 +1136,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if len(enabled_sites) == 0:
                 self.record_result(
                     "Site Configuration",
-                    "Configuration",
+                    "Data Pipeline Tests",
                     "FAIL",
                     "No enabled sites found in SITES_CONFIG",
                     config_data
@@ -1012,7 +1145,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             else:
                 self.record_result(
                     "Site Configuration",
-                    "Configuration",
+                    "Data Pipeline Tests",
                     "PASS",
                     f"Enabled: {len(enabled_sites)} sites; Disabled: {len(disabled_sites)} sites",
                     config_data
@@ -1020,7 +1153,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         except Exception as e:
             self.record_result(
                 "Site Configuration",
-                "Configuration",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Configuration error: {str(e)}"
             )
@@ -1033,8 +1166,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         """Validates result accuracy of depth calculations."""
         if not os.path.exists(self.validated_output_file):
             self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
+                "Depth Adjustment Verification",
+                "Data Pipeline Tests",
                 "SKIP",
                 "No validated data found"
             )
@@ -1049,8 +1182,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             validated_df = filter_valid_depth_data(validated_df, min_depth=0)
             if len(validated_df) == 0:
                 self.record_result(
-                    "Depth Calculation Verification",
-                    "Calculations",
+                    "Depth Adjustment Verification",
+                    "Data Pipeline Tests",
                     "SKIP",
                     "No valid depth data in validated output"
                 )
@@ -1102,8 +1235,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa"
             )
             self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
+                "Depth Adjustment Verification",
+                "Data Pipeline Tests",
                 "PASS" if all_passed else "FAIL",
                 details,
                 {'calculations': calculation_results}
@@ -1112,8 +1245,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 self.fail("Some calculations did not match expected values")
         except Exception as e:
             self.record_result(
-                "Depth Calculation Verification",
-                "Calculations",
+                "Depth Adjustment Verification",
+                "Data Pipeline Tests",
                 "FAIL",
                 f"Error during calculation verification: {str(e)}"
             )
@@ -1124,213 +1257,200 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # ========================================================================
  
     def test_10_data_recency_check(self):
-            """Check the most recent depth data reading for each enabled site."""
-            if not os.path.exists(self.data_downloads_path):
-                self.record_result(
-                    "Network Availability Check",
-                    "Data Quality",
-                    "FAIL",
-                    "data_downloads directory not found"
-                )
-                self.fail("data_downloads directory not available")
-                return
-           
-            enabled_sites = {
-                name: config for name, config in self.site_config.items()
-                if config.get('enabled', False)
-            }
-           
-            if not enabled_sites:
-                self.record_result(
-                    "Network Availability Check",
-                    "Data Quality",
-                    "SKIP",
-                    "No enabled sites configured"
-                )
-                self.skipTest("No enabled sites available")
-                return
-           
-            recency_results = []
-            current_date = datetime.now()
-            fail_count = 0 # No CSV or empty CSV
-            warning_count = 0 # Data > 28 days old
-            pass_count = 0 # Data within 28 days
-           
-            for site_id, config in enabled_sites.items():
-                csv_path = os.path.join(self.data_downloads_path, f"{site_id}.csv")
-               
-                # Check if CSV exists
-                if not os.path.exists(csv_path):
+        """Check the most recent depth data reading for each enabled site.
+
+        Recency tiers:
+          PASS    : data present and within 7 days
+          WARNING : data present but 8–28 days old
+          FAIL    : no CSV / empty CSV / no valid data / data older than 28 days
+        """
+        STALE_WARN_DAYS = 7
+        STALE_FAIL_DAYS = 28
+
+        if not os.path.exists(self.data_downloads_path):
+            self.record_result(
+                "Network Availability",
+                "Hardware Tests",
+                "FAIL",
+                "data_downloads directory not found"
+            )
+            self.fail("data_downloads directory not available")
+            return
+
+        enabled_sites = {
+            name: config for name, config in self.site_config.items()
+            if config.get('enabled', False)
+        }
+
+        if not enabled_sites:
+            self.record_result(
+                "Network Availability",
+                "Hardware Tests",
+                "SKIP",
+                "No enabled sites configured"
+            )
+            self.skipTest("No enabled sites available")
+            return
+
+        recency_results = []
+        current_date  = datetime.now()
+        fail_count    = 0
+        warning_count = 0
+        pass_count    = 0
+
+        for site_id, config in enabled_sites.items():
+            csv_path = os.path.join(self.data_downloads_path, f"{site_id}.csv")
+
+            # ── missing file ────────────────────────────────────────────────
+            if not os.path.exists(csv_path):
+                recency_results.append({
+                    'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                    'unit': 'N/A', 'days_since': 'No CSV file', 'status': 'FAIL'
+                })
+                fail_count += 1
+                continue
+
+            try:
+                df = pd.read_csv(csv_path)
+
+                if df.empty:
                     recency_results.append({
-                        'site': site_id,
-                        'date': 'N/A',
-                        'value': 'N/A',
-                        'unit': 'N/A',
-                        'days_since': '>28 days ago',
-                        'status': 'FAIL'
+                        'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                        'unit': 'N/A', 'days_since': 'Empty CSV', 'status': 'FAIL'
                     })
                     fail_count += 1
                     continue
-               
-                try:
-                    df = pd.read_csv(csv_path)
-                   
-                    # Check if CSV is empty
-                    if df.empty:
-                        recency_results.append({
-                            'site': site_id,
-                            'date': 'N/A',
-                            'value': 'N/A',
-                            'unit': 'N/A',
-                            'days_since': '>28 days ago',
-                            'status': 'FAIL'
-                        })
-                        fail_count += 1
-                        continue
-                   
-                    # Detect level column and unit
-                    level_column = None
-                    unit = None
-                   
-                    # Check for metres
-                    if 'Level in metres (m)' in df.columns:
-                        level_column = 'Level in metres (m)'
-                        unit = 'm'
-                    # Check for feet
-                    elif 'Level(RAW)[Main Buffer] (ft)' in df.columns:
-                        level_column = 'Level(RAW)[Main Buffer] (ft)'
-                        unit = 'ft'
-                    # Fallback: any column with 'Level'
-                    else:
-                        for col in df.columns:
-                            if 'Level' in col:
-                                level_column = col
-                                # Try to infer unit from column name
-                                if '(m)' in col:
-                                    unit = 'm'
-                                elif '(ft)' in col:
-                                    unit = 'ft'
-                                else:
-                                    unit = 'unknown'
-                                break
-                   
-                    if level_column is None:
-                        recency_results.append({
-                            'site': site_id,
-                            'date': 'N/A',
-                            'value': 'N/A',
-                            'unit': 'N/A',
-                            'days_since': 'No level column found',
-                            'status': 'FAIL'
-                        })
-                        fail_count += 1
-                        continue
-                   
-                    # Check for Date column
-                    if 'Date' not in df.columns:
-                        recency_results.append({
-                            'site': site_id,
-                            'date': 'N/A',
-                            'value': 'N/A',
-                            'unit': unit,
-                            'days_since': 'No date column found',
-                            'status': 'FAIL'
-                        })
-                        fail_count += 1
-                        continue
-                   
-                    # Parse dates and find most recent with valid depth data
-                    df['parsed_date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
-                    df[level_column] = pd.to_numeric(df[level_column], errors='coerce')
-                   
-                    # Filter for valid dates and depths
-                    valid_data = df[df['parsed_date'].notna() & df[level_column].notna()]
-                   
-                    if valid_data.empty:
-                        recency_results.append({
-                            'site': site_id,
-                            'date': 'N/A',
-                            'value': 'N/A',
-                            'unit': unit,
-                            'days_since': '>28 days ago',
-                            'status': 'FAIL'
-                        })
-                        fail_count += 1
-                        continue
-                   
-                    # Get most recent entry
-                    most_recent_idx = valid_data['parsed_date'].idxmax()
-                    most_recent_date = valid_data.loc[most_recent_idx, 'parsed_date']
-                    most_recent_value = valid_data.loc[most_recent_idx, level_column]
-                   
-                    # Calculate days since
-                    days_since = (current_date - most_recent_date).days
-                   
-                    # Format date for display
-                    date_str = most_recent_date.strftime('%d/%m/%Y')
-                   
-                    # Determine status
-                    if days_since <= 28:
-                        status = 'PASS'
-                        pass_count += 1
-                    else:
-                        status = 'WARNING'
-                        warning_count += 1
-                   
+
+                # ── detect level column and unit ────────────────────────────
+                level_column = None
+                unit = None
+                if 'Level in metres (m)' in df.columns:
+                    level_column = 'Level in metres (m)'
+                    unit = 'm'
+                elif 'Level(RAW)[Main Buffer] (ft)' in df.columns:
+                    level_column = 'Level(RAW)[Main Buffer] (ft)'
+                    unit = 'ft'
+                else:
+                    for col in df.columns:
+                        if 'Level' in col:
+                            level_column = col
+                            unit = 'm' if '(m)' in col else ('ft' if '(ft)' in col else 'unknown')
+                            break
+
+                if level_column is None:
                     recency_results.append({
-                        'site': site_id,
-                        'date': date_str,
-                        'value': round(most_recent_value, 2),
-                        'unit': unit,
-                        'days_since': f"{days_since} days ago",
-                        'status': status
-                    })
-                   
-                except Exception as e:
-                    recency_results.append({
-                        'site': site_id,
-                        'date': 'N/A',
-                        'value': 'N/A',
-                        'unit': 'N/A',
-                        'days_since': f'Error: {str(e)}',
-                        'status': 'FAIL'
+                        'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                        'unit': 'N/A', 'days_since': 'No level column', 'status': 'FAIL'
                     })
                     fail_count += 1
-           
-            # Determine overall test status
-            if fail_count > 0:
-                overall_status = "FAIL"
-            elif warning_count > 0:
-                overall_status = "WARNING"
-            else:
-                overall_status = "PASS"
-           
-            details = (
-                f"Checked {len(enabled_sites)} enabled sites: "
-                f"{pass_count} within 28 days, "
-                f"{warning_count} stale (>28 days), "
-                f"{fail_count} missing/empty data"
+                    continue
+
+                if 'Date' not in df.columns:
+                    recency_results.append({
+                        'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                        'unit': unit, 'days_since': 'No date column', 'status': 'FAIL'
+                    })
+                    fail_count += 1
+                    continue
+
+                # ── parse and filter ────────────────────────────────────────
+                df['parsed_date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y', errors='coerce')
+                df[level_column]  = pd.to_numeric(df[level_column], errors='coerce')
+                valid_data = df[df['parsed_date'].notna() & df[level_column].notna()]
+
+                if valid_data.empty:
+                    recency_results.append({
+                        'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                        'unit': unit, 'days_since': 'No valid data rows', 'status': 'FAIL'
+                    })
+                    fail_count += 1
+                    continue
+
+                # ── most recent reading ─────────────────────────────────────
+                most_recent_idx   = valid_data['parsed_date'].idxmax()
+                most_recent_date  = valid_data.loc[most_recent_idx, 'parsed_date']
+                most_recent_value = valid_data.loc[most_recent_idx, level_column]
+                days_since        = (current_date - most_recent_date).days
+                date_str          = most_recent_date.strftime('%d/%m/%Y')
+
+                # ── recency status ──────────────────────────────────────────
+                if days_since > STALE_FAIL_DAYS:
+                    status = 'FAIL'
+                    fail_count += 1
+                elif days_since > STALE_WARN_DAYS:
+                    status = 'WARNING'
+                    warning_count += 1
+                else:
+                    status = 'PASS'
+                    pass_count += 1
+
+                recency_results.append({
+                    'site':       site_id,
+                    'date':       date_str,
+                    'value':      round(most_recent_value, 2),
+                    'unit':       unit,
+                    'days_since': f"{days_since} days ago",
+                    'status':     status
+                })
+
+            except Exception as e:
+                recency_results.append({
+                    'site': site_id, 'date': 'N/A', 'value': 'N/A',
+                    'unit': 'N/A', 'days_since': f'Error: {str(e)}', 'status': 'FAIL'
+                })
+                fail_count += 1
+
+        # ── overall status ───────────────────────────────────────────────────
+        if fail_count > 0:
+            overall_status = "FAIL"
+        elif warning_count > 0:
+            overall_status = "WARNING"
+        else:
+            overall_status = "PASS"
+
+        details = (
+            f"Checked {len(enabled_sites)} enabled sites: "
+            f"{pass_count} current, "
+            f"{warning_count} stale (>7 days), "
+            f"{fail_count} failures (missing or no data in 28 days)"
+        )
+
+        self.record_result(
+            "Network Availability",
+            "Hardware Tests",
+            overall_status,
+            details,
+            {'recency_results': recency_results}
+        )
+
+        if fail_count > 0:
+            self.fail(
+                f"{fail_count} site(s) failed network availability check"
             )
-           
-            self.record_result(
-                "Network Availability Check",
-                "Data Quality",
-                overall_status,
-                details,
-                {'recency_results': recency_results}
-            )
-           
-            if fail_count > 0:
-                self.fail(
-                    f"{fail_count} site(s) had no data or missing CSV files"
-                )
    
     def test_11_statistical_anomaly_detection(self):
-        """Test for statistical anomalies in validated data."""
+        """Test for statistical anomalies in validated data.
+
+        Depth % change suppression:
+          - Percentage change is mathematically unstable when the previous
+            value is at or near zero. Rows where the previous depth reading
+            is <= MIN_DEPTH_FOR_PCT (0.05 m) are excluded from the % change
+            check to prevent false flags.
+
+        Depth validity:
+          - Depth(m)adjusted > 3 m → WARNING  ('unusually deep, verify sensor')
+          - Depth(m)adjusted > 5 m → FAIL     ('data invalid, field calibration required')
+          These are appended to depth_anomalies with a 'validity' key so
+          the HTML renderer can distinguish them from % change anomalies.
+        """
+        MIN_DEPTH_FOR_PCT = 0.05   # metres — below this, % change is meaningless
+        DEPTH_WARN_M      = 3.0
+        DEPTH_FAIL_M      = 5.0
+
         if not os.path.exists(self.validated_output_file):
             self.record_result(
-                "Statistical Anomaly Detection",
-                "Data Quality",
+                "Monthly Statistical Anomalies",
+                "Hardware Tests",
                 "SKIP",
                 "Statistical analysis requires validated data files"
             )
@@ -1341,80 +1461,158 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if df is None:
                 self.skipTest("Could not load validated output file")
                 return
-            # Convert to numeric
+
             df['Depth(m)adjusted'] = pd.to_numeric(df['Depth(m)adjusted'], errors='coerce')
-            df['BomBaro'] = pd.to_numeric(df['BomBaro'], errors='coerce')
-            df['Rainfall'] = pd.to_numeric(df.get('Rainfall', pd.Series()), errors='coerce')
+            df['BomBaro']          = pd.to_numeric(df['BomBaro'], errors='coerce')
+            df['Rainfall']         = pd.to_numeric(df.get('Rainfall', pd.Series()), errors='coerce')
             df = df.dropna(subset=['Sample Point'])
-            
-            # Parse dates for rain event matching
-            df['parsed_date'] = pd.to_datetime(df['Date Time (dd/mm/yyyy hh24:mi:ss)'], errors='coerce')
-            
-            depth_anomalies = []
+            df['parsed_date'] = pd.to_datetime(
+                df['Date Time (dd/mm/yyyy hh24:mi:ss)'], errors='coerce'
+            )
+
+            depth_anomalies   = []
             pressure_anomalies = []
-            # Analyse by site
+            has_fail          = False
+
             for site in df['Sample Point'].unique():
                 site_data = df[df['Sample Point'] == site].copy()
                 site_data = site_data.sort_values('Date Time (dd/mm/yyyy hh24:mi:ss)')
-                # Depth anomalies (>15% change)
+
                 if 'Depth(m)adjusted' in site_data.columns:
-                    site_data['depth_pct_change'] = site_data['Depth(m)adjusted'].pct_change() * 100
+
+                    # ── % change anomalies (suppress near-zero previous values) ──
+                    prev_depth = site_data['Depth(m)adjusted'].shift(1)
+                    valid_pct_mask = prev_depth.abs() > MIN_DEPTH_FOR_PCT
+                    site_data['depth_pct_change'] = np.where(
+                        valid_pct_mask,
+                        site_data['Depth(m)adjusted'].pct_change() * 100,
+                        np.nan
+                    )
                     depth_mask = abs(site_data['depth_pct_change']) > 15
+
                     for idx in site_data[depth_mask].index:
-                        # Check if rainfall occurred on this date
                         rainfall_val = site_data.loc[idx, 'Rainfall'] if 'Rainfall' in site_data.columns else None
-                        rain_event = rainfall_val > 0 if pd.notna(rainfall_val) else False
-                        
+                        rain_event   = rainfall_val > 0 if pd.notna(rainfall_val) else False
+                        prev_val     = prev_depth.loc[idx]
                         depth_anomalies.append({
-                            'site': site,
-                            'date': str(site_data.loc[idx, 'Date Time (dd/mm/yyyy hh24:mi:ss)']),
-                            'value': round(site_data.loc[idx, 'Depth(m)adjusted'], 1),
+                            'site':       site,
+                            'date':       str(site_data.loc[idx, 'Date Time (dd/mm/yyyy hh24:mi:ss)']),
+                            'prev_value': round(float(prev_val), 3) if pd.notna(prev_val) else 'N/A',
+                            'value':      round(site_data.loc[idx, 'Depth(m)adjusted'], 3),
                             'change_pct': round(site_data.loc[idx, 'depth_pct_change'], 1),
-                            'rain_event': rain_event
+                            'rain_event': rain_event,
+                            'validity':   'pct_change'
                         })
-                # Pressure anomalies (>2% change)
+
+                    # ── depth validity check ────────────────────────────────
+                    for idx, row in site_data.iterrows():
+                        d = row['Depth(m)adjusted']
+                        if pd.isna(d):
+                            continue
+                        if d > DEPTH_FAIL_M:
+                            has_fail = True
+                            depth_anomalies.append({
+                                'site':       site,
+                                'date':       str(row['Date Time (dd/mm/yyyy hh24:mi:ss)']),
+                                'value':      round(d, 2),
+                                'change_pct': None,
+                                'rain_event': False,
+                                'validity':   'fail',
+                                'note':       'data invalid, field calibration required'
+                            })
+                        elif d > DEPTH_WARN_M:
+                            depth_anomalies.append({
+                                'site':       site,
+                                'date':       str(row['Date Time (dd/mm/yyyy hh24:mi:ss)']),
+                                'value':      round(d, 2),
+                                'change_pct': None,
+                                'rain_event': False,
+                                'validity':   'warning',
+                                'note':       'unusually deep, verify sensor'
+                            })
+
+                # ── pressure % change anomalies ─────────────────────────────
                 if 'BomBaro' in site_data.columns:
                     site_data['pressure_pct_change'] = site_data['BomBaro'].pct_change() * 100
                     pressure_mask = abs(site_data['pressure_pct_change']) > 2
                     for idx in site_data[pressure_mask].index:
                         if pd.notna(site_data.loc[idx, 'BomBaro']):
                             pressure_anomalies.append({
-                                'site': site,
-                                'date': str(site_data.loc[idx, 'Date Time (dd/mm/yyyy hh24:mi:ss)']),
-                                'value': round(site_data.loc[idx, 'BomBaro'], 1),
+                                'site':       site,
+                                'date':       str(site_data.loc[idx, 'Date Time (dd/mm/yyyy hh24:mi:ss)']),
+                                'value':      round(site_data.loc[idx, 'BomBaro'], 1),
                                 'change_pct': round(site_data.loc[idx, 'pressure_pct_change'], 1)
                             })
-            # Calculate stats
+
+            # ── deduplicate validity flags (keep worst per site) ────────────
+            # A site appearing in both pct_change and validity rows is fine —
+            # keep all; the HTML renderer shows them in separate rows.
+
+            # ── stats and sort ───────────────────────────────────────────────
+            pct_change_anomalies = [a for a in depth_anomalies if a['validity'] == 'pct_change']
             depth_stats = {
-                'max_change_pct': round(max([abs(a['change_pct']) for a in depth_anomalies], default=0), 1),
-                'count': len(depth_anomalies)
+                'max_change_pct': round(
+                    max([abs(a['change_pct']) for a in pct_change_anomalies], default=0), 1
+                ),
+                'count': len(pct_change_anomalies)
             }
             pressure_stats = {
-                'max_change_pct': round(max([abs(a['change_pct']) for a in pressure_anomalies], default=0), 1),
+                'max_change_pct': round(
+                    max([abs(a['change_pct']) for a in pressure_anomalies], default=0), 1
+                ),
                 'count': len(pressure_anomalies)
             }
-            # Limit results
-            depth_anomalies.sort(key=lambda x: abs(x['change_pct']), reverse=True)
+
+            # Sort: validity failures first, then by abs % change
+            depth_anomalies.sort(
+                key=lambda x: (
+                    0 if x['validity'] == 'fail' else (1 if x['validity'] == 'warning' else 2),
+                    -abs(x['change_pct']) if x['change_pct'] is not None else 0
+                )
+            )
             pressure_anomalies.sort(key=lambda x: abs(x['change_pct']), reverse=True)
-            depth_anomalies = depth_anomalies[:10]
+            depth_anomalies    = depth_anomalies[:20]
             pressure_anomalies = pressure_anomalies[:10]
-            status = "WARNING" if (len(depth_anomalies) > 0 or len(pressure_anomalies) > 0) else "PASS"
+
+            validity_fail_count = sum(1 for a in depth_anomalies if a['validity'] == 'fail')
+            validity_warn_count = sum(1 for a in depth_anomalies if a['validity'] == 'warning')
+
+            if has_fail:
+                status = "FAIL"
+            elif len(depth_anomalies) > 0 or len(pressure_anomalies) > 0:
+                status = "WARNING"
+            else:
+                status = "PASS"
+
+            details_parts = [
+                f"Depth % change anomalies: {depth_stats['count']} (>15%)",
+                f"Pressure anomalies: {pressure_stats['count']} (>2%)",
+            ]
+            if validity_fail_count:
+                details_parts.append(f"Invalid depth readings: {validity_fail_count} (>5m)")
+            if validity_warn_count:
+                details_parts.append(f"Unusually deep readings: {validity_warn_count} (>3m)")
+
             self.record_result(
-                "Statistical Anomaly Detection",
-                "Data Quality",
+                "Monthly Statistical Anomalies",
+                "Hardware Tests",
                 status,
-                f"Depth anomalies: {depth_stats['count']} (>15%), Pressure anomalies: {pressure_stats['count']} (>2%)",
+                ", ".join(details_parts),
                 {
-                    'depth_anomalies': depth_anomalies,
+                    'depth_anomalies':   depth_anomalies,
                     'pressure_anomalies': pressure_anomalies,
-                    'depth_stats': depth_stats,
-                    'pressure_stats': pressure_stats
+                    'depth_stats':       depth_stats,
+                    'pressure_stats':    pressure_stats
                 }
             )
+            # Status already recorded via record_result above — do not call
+            # self.fail() here as it would trigger the except handler and
+            # generate a duplicate FAIL entry in the report.
+
         except Exception as e:
             self.record_result(
-                "Statistical Anomaly Detection",
-                "Data Quality",
+                "Monthly Statistical Anomalies",
+                "Hardware Tests",
                 "FAIL",
                 f"Error during anomaly detection: {str(e)}"
             )
@@ -1463,34 +1661,70 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(result)
-        # Category order
-        category_order = [
-            'Connectivity',
-            'Data Structure',
-            'Battery Voltage',
-            'Configuration',
-            'Calculations',
-            'Data Quality'
+        # Section definitions — order within each section matches desired report order
+        month_name = cls.test_start_time.strftime('%B')
+        sections = [
+            {
+                'heading': f'{month_name} Hardware Tests',
+                'categories': ['Hardware Tests'],
+                'order': [
+                    'Network Availability',
+                    'Network Power',
+                    'Monthly Statistical Anomalies',
+                ],
+            },
+            {
+                'heading': f'{month_name} Data Pipeline Tests',
+                'categories': ['Data Pipeline Tests'],
+                'order': [
+                    'Site Configuration',
+                    'Logger Portal Access',
+                    'Logger Portal Navigation',
+                    'Logger Portal Data Extraction',
+                    'Logger Data Structure',
+                    'Weather Website Access',
+                    'Weather Data Structure',
+                    'Depth Adjustment Verification',
+                ],
+            },
         ]
         # Generate sections
-        for category in category_order:
-            if category in categories:
-                tests = categories[category]
-                html += f'<h2>{category} Tests</h2>'
-                for test in tests:
-                    status_class = test['status'].lower()
-                    test_description = TEST_DESCRIPTIONS.get(test['test_name'], '')
-                    html += f"""
+        for section in sections:
+            # Collect all tests belonging to this section's categories
+            section_tests = []
+            for cat in section['categories']:
+                section_tests.extend(categories.get(cat, []))
+            if not section_tests:
+                continue
+            html += f'<h2>{section["heading"]}</h2>'
+            # Emit tests in the defined order; any unlisted tests append at end
+            ordered = []
+            remaining = list(section_tests)
+            for name in section['order']:
+                for t in remaining:
+                    if t['test_name'] == name:
+                        ordered.append(t)
+                        remaining.remove(t)
+                        break
+            ordered.extend(remaining)  # catch any not in the explicit order list
+            for test in ordered:
+                status_class = test['status'].lower()
+                test_description = TEST_DESCRIPTIONS.get(test['test_name'], '')
+                # Interpolate dynamic values into descriptions where needed
+                if test['test_name'] == 'Network Power' and test.get('data'):
+                    n_sites = len(test['data'].get('battery_results', []))
+                    test_description = test_description.format(n_sites=n_sites)
+                html += f"""
                     <div class="test-section">
                         <h3>{test['test_name']} - <span class="{status_class}">{test['status']}</span></h3>
                     """
-                    if test_description:
-                        html += f'<div class="test-description">{test_description}</div>'
-                    html += f'<p>{test["details"]}</p>'
-                    # Add test-specific data
-                    if test['data']:
-                        html += cls._generate_test_data_html(test)
-                    html += '</div>'
+                if test_description:
+                    html += f'<div class="test-description">{test_description}</div>'
+                html += f'<p>{test["details"]}</p>'
+                # Add test-specific data
+                if test['data']:
+                    html += cls._generate_test_data_html(test)
+                html += '</div>'
         # Footer
         html += HTML_FOOTER
         # Save report
@@ -1510,7 +1744,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         html = ""
         test_name = test['test_name']
         data = test['data']
-        if test_name == 'Network Availability Check':
+        if test_name == 'Network Availability':
             if data and 'recency_results' in data and data['recency_results']:
                 html += '<table>'
                 html += '<tr><th>Site</th><th>Date</th><th>Depth Reading</th><th>Unit</th><th>Last Datapoint</th><th>Status</th></tr>'
@@ -1525,15 +1759,15 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         <td class="{status_class}">{res['status']}</td>
                     </tr>"""
                 html += '</table>'
-        elif test_name == 'Logger Portal Authentication':
+        elif test_name == 'Logger Portal Access':
             if data:
-                html += '<h4>Authentication Success:</h4><ul>'
+                html += '<h4>Authentication Query Result:</h4><ul>'
                 if 'session_cookie' in data:
                     html += f'<li>Session Cookie: {data["session_cookie"]}</li>'
                 if 'final_url' in data:
                     html += f'<li>Final URL: {data["final_url"]}</li>'
                 html += '</ul>'
-        elif test_name == 'Logger Portal Node Selection':
+        elif test_name == 'Logger Portal Navigation':
             if data:
                 html += '<h4>Channel Navigation:</h4><ul>'
                 if 'site' in data:
@@ -1545,23 +1779,136 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 if 'data_table' in data:
                     html += f'<li>Data Table: {"✓" if data["data_table"] else "✗"}</li>'
                 html += '</ul>'
-        elif test_name == 'Battery Voltage Check':
+        elif test_name == 'Network Power':
             if 'battery_results' in data:
                 html += '<h4>Battery Voltage Results:</h4>'
                 html += '<table class="calculation-table">'
-                html += '<tr><th>Site</th><th>Threshold (V)</th><th>Current Voltage (V)</th><th>Status</th></tr>'
+                html += (
+                    '<tr><th>Site</th>'
+                    '<th>Last Voltage (V)</th><th>Last Reading</th>'
+                    '<th>Status</th></tr>'
+                )
                 for res in data['battery_results']:
                     status_class = res['status'].lower()
-                    details = res.get('details', '')
-                    current_voltage = res.get('current_voltage', 'N/A')
-                    threshold = res.get('threshold', 'N/A')
+                    details      = res.get('details', '')
+                    voltage_cell = res.get('current_voltage', 'N/A') if details == '' else details
+                    last_reading = res.get('last_reading', '—')
                     html += f"""<tr>
                         <td>{res['site']}</td>
-                        <td>{threshold}</td>
-                        <td>{current_voltage if details == '' else details}</td>
+                        <td>{voltage_cell}</td>
+                        <td>{last_reading}</td>
                         <td class="{status_class}">{res['status']}</td>
                     </tr>"""
                 html += '</table>'
+
+                # ── conditional voltage trend graphs (WARNING / FAIL only) ──
+                sites_needing_graph = [
+                    r for r in data['battery_results']
+                    if r.get('status') in ('WARNING', 'FAIL')
+                    and r.get('voltage_history')
+                ]
+                if sites_needing_graph:
+                    html += '<h4>Voltage Trend (28-day) — Sites Requiring Attention:</h4>'
+                    for res in sites_needing_graph:
+                        history = res['voltage_history']
+                        site_id = res['site']
+                        volts   = [p['voltage'] for p in history]
+                        labels  = [p['date']    for p in history]
+                        if not volts:
+                            continue
+
+                        v_min   = min(volts)
+                        v_max   = max(volts)
+                        v_range = v_max - v_min if v_max != v_min else 0.1
+
+                        W, H         = 640, 200
+                        PAD_L, PAD_R = 60, 20
+                        PAD_T, PAD_B = 20, 40
+                        plot_w       = W - PAD_L - PAD_R
+                        plot_h       = H - PAD_T - PAD_B
+                        n            = len(volts)
+
+                        def px_x(i):
+                            return PAD_L + (i / max(n - 1, 1)) * plot_w
+
+                        def px_y(v):
+                            return PAD_T + plot_h - ((v - v_min) / v_range) * plot_h
+
+                        tw_val = res.get('threshold_warn')
+                        tf_val = res.get('threshold_fail')
+
+                        def threshold_y(tv):
+                            clamped = max(v_min, min(v_max, float(tv)))
+                            return px_y(clamped)
+
+                        points = ' '.join(
+                            f"{px_x(i):.1f},{px_y(v):.1f}"
+                            for i, v in enumerate(volts)
+                        )
+
+                        y_ticks = ''
+                        for t in range(5):
+                            tick_v = v_min + t * v_range / 4
+                            ty     = px_y(tick_v)
+                            y_ticks += (
+                                f'<line x1="{PAD_L-4}" y1="{ty:.1f}" '
+                                f'x2="{PAD_L}" y2="{ty:.1f}" stroke="#999" stroke-width="1"/>'
+                                f'<text x="{PAD_L-6}" y="{ty+4:.1f}" text-anchor="end" '
+                                f'font-size="10" fill="#555">{tick_v:.2f}</text>'
+                            )
+
+                        x_labels = ''
+                        step = max(1, n // 8)
+                        for i in range(0, n, step):
+                            lx = px_x(i)
+                            x_labels += (
+                                f'<text x="{lx:.1f}" y="{H - PAD_B + 14}" '
+                                f'text-anchor="middle" font-size="9" fill="#555">{labels[i]}</text>'
+                            )
+
+                        thresh_svg = ''
+                        if tw_val and isinstance(tw_val, (int, float)) and v_min <= tw_val <= v_max:
+                            ty = threshold_y(tw_val)
+                            thresh_svg += (
+                                f'<line x1="{PAD_L}" y1="{ty:.1f}" x2="{W-PAD_R}" y2="{ty:.1f}" '
+                                f'stroke="#ffc107" stroke-width="1.5" stroke-dasharray="5,3"/>'
+                                f'<text x="{W-PAD_R+2}" y="{ty+4:.1f}" font-size="9" fill="#ffc107">warn</text>'
+                            )
+                        if tf_val and isinstance(tf_val, (int, float)) and v_min <= tf_val <= v_max:
+                            ty = threshold_y(tf_val)
+                            thresh_svg += (
+                                f'<line x1="{PAD_L}" y1="{ty:.1f}" x2="{W-PAD_R}" y2="{ty:.1f}" '
+                                f'stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,3"/>'
+                                f'<text x="{W-PAD_R+2}" y="{ty+4:.1f}" font-size="9" fill="#dc3545">fail</text>'
+                            )
+
+                        last_x     = px_x(n - 1)
+                        last_y     = px_y(volts[-1])
+                        dot_colour = '#dc3545' if res['status'] == 'FAIL' else '#ffc107'
+
+                        html += f"""
+                        <div style="margin: 16px 0;">
+                            <p style="margin:4px 0; font-weight:bold; font-size:13px;">{site_id}</p>
+                            <svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;
+                                 background:#fff; border:1px solid #dee2e6; border-radius:4px;"
+                                 xmlns="http://www.w3.org/2000/svg">
+                                <line x1="{PAD_L}" y1="{PAD_T}" x2="{PAD_L}" y2="{PAD_T+plot_h}"
+                                      stroke="#ccc" stroke-width="1"/>
+                                <line x1="{PAD_L}" y1="{PAD_T+plot_h}" x2="{W-PAD_R}" y2="{PAD_T+plot_h}"
+                                      stroke="#ccc" stroke-width="1"/>
+                                {y_ticks}
+                                {x_labels}
+                                {thresh_svg}
+                                <polyline points="{points}" fill="none"
+                                          stroke="#667eea" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="4"
+                                        fill="{dot_colour}" stroke="white" stroke-width="1.5"/>
+                                <text x="{last_x:.1f}" y="{last_y-8:.1f}" text-anchor="middle"
+                                      font-size="10" fill="{dot_colour}" font-weight="bold">
+                                    {volts[-1]:.3f}V
+                                </text>
+                            </svg>
+                        </div>"""
         elif test_name == 'Site Configuration':
             if data.get('enabled'):
                 html += f'<h4>Enabled Sites ({len(data["enabled"])}):</h4><ul>'
@@ -1573,14 +1920,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 for site in data['disabled']:
                     html += f'<li>✓ {site}</li>'
                 html += '</ul>'
-        elif test_name == 'Depth Calculation Verification':
+        elif test_name == 'Depth Adjustment Verification':
             if 'calculations' in data:
                 html += '<h4>Calculation Results:</h4>'
                 html += '<table class="calculation-table">'
                 html += '<tr><th>Test</th><th>Site</th><th>Raw (m)</th><th>BOM</th><th>Logger</th>'
                 html += '<th>Adj?</th><th>Calc</th><th>Expected</th><th>Diff</th><th>✓</th></tr>'
                 for calc in data['calculations']:
-                    result = '<span class="pass">✓</span>' if calc['passed'] else '<span class="fail">✗</span>'
+                    result   = '<span class="pass">✓</span>' if calc['passed'] else '<span class="fail">✗</span>'
                     adj_text = 'Yes' if calc['adjustment_applied'] else 'No'
                     html += f"""<tr>
                         <td>{calc['test_num']}</td>
@@ -1595,19 +1942,49 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         <td>{result}</td>
                     </tr>"""
                 html += '</table>'
-        elif test_name == 'Statistical Anomaly Detection':
-            if data.get('depth_anomalies'):
-                html += '<h4>Depth Anomalies:</h4><div class="anomaly">'
+        elif test_name == 'Monthly Statistical Anomalies':
+            pct_anomalies      = [a for a in data.get('depth_anomalies', []) if a.get('validity') == 'pct_change']
+            validity_anomalies = [a for a in data.get('depth_anomalies', []) if a.get('validity') in ('fail', 'warning')]
+
+            if pct_anomalies:
+                html += '<h4>Depth % Change Anomalies:</h4><div class="anomaly">'
                 html += f"<p>Max change: {data['depth_stats']['max_change_pct']}%</p>"
-                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th><th>Rain Event</th></tr>'
-                for a in data['depth_anomalies']:
-                    rain_status = 'True' if a.get('rain_event', False) else 'False'
-                    html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td><td>{rain_status}</td></tr>"
+                html += (
+                    '<table><tr><th>Site</th><th>Date</th>'
+                    '<th>Previous (m)</th><th>New (m)</th>'
+                    '<th>Change %</th><th>Rain Event (Y/N)</th></tr>'
+                )
+                for a in pct_anomalies:
+                    rain_status = 'Yes' if a.get('rain_event', False) else 'No'
+                    html += (
+                        f"<tr>"
+                        f"<td>{a['site']}</td>"
+                        f"<td>{a['date']}</td>"
+                        f"<td>{a.get('prev_value', 'N/A')}</td>"
+                        f"<td>{a['value']}</td>"
+                        f"<td>{a['change_pct']}%</td>"
+                        f"<td>{rain_status}</td>"
+                        f"</tr>"
+                    )
                 html += '</table></div>'
+
+            if validity_anomalies:
+                html += '<h4>Invalid Depth Readings:</h4><div class="anomaly">'
+                html += '<table><tr><th>Site</th><th>Date</th><th>Depth (m)</th><th>Flag</th><th>Note</th></tr>'
+                for a in validity_anomalies:
+                    flag_class = 'fail' if a['validity'] == 'fail' else 'warning'
+                    flag_label = 'FAIL' if a['validity'] == 'fail' else 'WARNING'
+                    html += (
+                        f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td>"
+                        f'<td class="{flag_class}">{flag_label}</td>'
+                        f"<td>{a.get('note', '')}</td></tr>"
+                    )
+                html += '</table></div>'
+
             if data.get('pressure_anomalies'):
                 html += '<h4>Pressure Anomalies:</h4><div class="anomaly">'
                 html += f"<p>Max change: {data['pressure_stats']['max_change_pct']}%</p>"
-                html += '<table><tr><th>Site</th><th>Date</th><th>Value</th><th>Change %</th></tr>'
+                html += '<table><tr><th>Site</th><th>Date</th><th>Value (hPa)</th><th>Change %</th></tr>'
                 for a in data['pressure_anomalies']:
                     html += f"<tr><td>{a['site']}</td><td>{a['date']}</td><td>{a['value']}</td><td>{a['change_pct']}%</td></tr>"
                 html += '</table></div>'

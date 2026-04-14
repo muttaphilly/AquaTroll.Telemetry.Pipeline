@@ -132,8 +132,16 @@ def send_validated_data_email(csv_path, html_report_path=None):
         attachments_list.append(f"* {os.path.basename(html_report_path)}")
     
     # Format body with bullet points
-    body = f"GPO Environment\n" +"Please find attached validated depth data for {current_month}:\n" + "\n".join(attachments_list) + "This email is not monitored. \n Please direct any queries to razvan@maxyengineering.com.au\n" + "\n\nReport generated using open source code available here: https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
-    
+    body = (
+    f"GPO Environment\n\n"
+    f"Please find attached validated depth data for {current_month}:\n"
+    f"{'\n'.join(attachments_list)}\n\n"
+    "\nThis email is not monitored.\n"
+    "\nPlease direct any queries to razvan@maxyengineering.com.au\n\n"
+    "Report generated using open source code available here: "
+    "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
+    )
+  
     return send_email_with_attachments(recipients, subject, body, attachments)
 
 def send_database_email(attachment_path):
@@ -156,7 +164,16 @@ def send_database_email(attachment_path):
     subject_template = os.getenv('DATABASE_EMAIL_SUBJECT', "{month} Depth Data")
     subject = subject_template.format(month=current_month)
     
-    body_template = os.getenv('DATABASE_EMAIL_BODY', "GPO Environment\n For Upload To Database: {filename}.\n  This email is not monitored.\n  Please direct any queries to razvan@maxyengineering.com.au")
+    body_template = os.getenv(
+    'DATABASE_EMAIL_BODY',
+    (
+        "GPO Environment\n\n"
+        "For Upload To Database: {filename}\n\n"
+        "\nThis email is not monitored.\n"
+        "Please direct any queries to razvan@maxyengineering.com.au"
+    )
+)
+   
     body = body_template.format(filename=os.path.basename(attachment_path))
     
     return send_email_with_attachments(recipients, subject, body, attachment_path)
