@@ -140,25 +140,6 @@ HTML_FOOTER = """
 </html>
 """
 # ============================================================================
-# CALCULATION CONSTANTS
-# ============================================================================
-class CalculationConstants:
-    """
-    Constants used in depth calculation and pressure conversion.
-    These values match logic used in main pipeline (dataValidation.py).
-    """
-    # Pressure conversion
-    HPA_TO_PSI = 0.0145038
-    PSI_TO_HPA = 68.9476
-   
-    # Depth adjustment (AquaTroll specifications)
-    CONVERSION_FACTOR = 0.70307 # Pressure differential to water column height
-   
-    # Thresholds for adjustment application
-    MIN_DEPTH_THRESHOLD = 0.3 # meters - prevents corrections in shallow pools
-    MIN_BARO_DIFF_THRESHOLD = 5.0 # hPa - prevents corrections for sensor noise
-    MAX_BARO_DIFF_THRESHOLD = 20.0 # hPa - prevents corrections for sensor malfunction
-# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 def load_csv_safely(filepath, logger=None):
@@ -180,62 +161,7 @@ def load_csv_safely(filepath, logger=None):
         if logger:
             logger.error(f"Error loading {filepath}: {str(e)}")
         return None
-def filter_valid_depth_data(df, min_depth=0):
-    """
-    Filter dataframe for rows with valid depth measurements.
-    Args:
-        df (pd.DataFrame): Input dataframe
-        min_depth (float): Minimum depth threshold
-    Returns:
-        pd.DataFrame: Filtered dataframe
-    """
-    return df[
-        (df['Depth(m)raw'].notna()) &
-        (df['Depth(m)raw'] > min_depth) &
-        (df['Depth(m)adjusted'].notna()) &
-        (df['Depth(m)adjusted'] > min_depth)
-    ]
-def should_apply_depth_adjustment(depth_m, bom_baro, logger_baro):
-    """
-    Determine if depth adjustment should be applied based on thresholds.
-    Args:
-        depth_m (float): Raw depth in meters
-        bom_baro (float): BOM barometric pressure in hPa
-        logger_baro (float): Logger barometric pressure in hPa
-    Returns:
-        bool: True if adjustment should be applied
-    """
-    if bom_baro is None or logger_baro is None:
-        return False
-    delta_p_hpa = bom_baro - logger_baro
-    return (
-        depth_m > CalculationConstants.MIN_DEPTH_THRESHOLD and
-        delta_p_hpa > CalculationConstants.MIN_BARO_DIFF_THRESHOLD and
-        delta_p_hpa <= CalculationConstants.MAX_BARO_DIFF_THRESHOLD
-    )
-def calculate_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
-    """
-    Calculate adjusted depth using AquaTroll formula with thresholds.
-    This implements the exact logic from dataValidation.py:
-    1. Check if thresholds are met (depth > 0.3m, baro diff > 5 hPa)
-    2. If thresholds met, apply adjustment formula
-    3. Otherwise, return raw depth unchanged
-    Args:
-        depth_m_raw (float): Raw depth in meters
-        bom_baro (float): BOM barometric pressure in hPa
-        logger_baro (float): Logger barometric pressure in hPa
-    Returns:
-        tuple: (adjusted_depth_m, adjustment_applied)
-    """
-    # Check thresholds
-    if not should_apply_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
-        return round(depth_m_raw, 2), False
-    # Calculate adjustment
-    delta_p_hpa = bom_baro - logger_baro
-    delta_p_psi = delta_p_hpa * CalculationConstants.HPA_TO_PSI
-    depth_adjustment_m = CalculationConstants.CONVERSION_FACTOR * delta_p_psi
-    adjusted_depth = depth_m_raw + depth_adjustment_m
-    return round(adjusted_depth, 2), True
+
 # ============================================================================
 # MAIN TEST CLASS
 # ============================================================================
@@ -271,6 +197,54 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             cls.transformed_data_path,
             'validatedDepthData.csv'
         )
+    @classmethod
+    def _ensure_downloads_exist(cls):
+        """
+        Diagnostic fallback: if data_downloads/ is missing or empty, silently
+        run httpLoggerScraper.run() to produce the CSVs.  This lets testsAB.py
+        function as a standalone diagnostic tool even when the pipeline hasn't run.
+        """
+        csv_files = []
+        if os.path.exists(cls.data_downloads_path):
+            csv_files = [
+                f for f in os.listdir(cls.data_downloads_path)
+                if f.endswith('.csv') and 'baro' not in f.lower()
+                and f != 'weather_data.csv'
+            ]
+        if not csv_files:
+            try:
+                import httpLoggerScraper
+                logging.getLogger(__name__).warning(
+                    "data_downloads/ empty — running httpLoggerScraper in diagnostic mode"
+                )
+                httpLoggerScraper.run(cls.data_downloads_path)
+            except Exception as e:
+                logging.getLogger(__name__).error(
+                    f"Diagnostic scrape failed: {e}"
+                )
+
+    @classmethod
+    def _ensure_validated_exists(cls):
+        """
+        Diagnostic fallback: if validatedDepthData.csv is missing, silently run
+        dataValidation.consolidate_csv_files() to produce it.
+        """
+        if not os.path.exists(cls.validated_output_file):
+            try:
+                import dataValidation
+                os.makedirs(cls.transformed_data_path, exist_ok=True)
+                logging.getLogger(__name__).warning(
+                    "validatedDepthData.csv not found — running dataValidation in diagnostic mode"
+                )
+                dataValidation.consolidate_csv_files(
+                    cls.data_downloads_path,
+                    cls.validated_output_file
+                )
+            except Exception as e:
+                logging.getLogger(__name__).error(
+                    f"Diagnostic validation failed: {e}"
+                )
+
     def record_result(self, test_name, category, status, details="", data=None):
         """
         Record test results for HTML report generation.
@@ -804,6 +778,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail(f"Failed to parse weather data: {e}")
     def test_06_logger_data_structure(self):
         """Test logger CSV data structure."""
+        self.__class__._ensure_downloads_exist()
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Logger Data Structure",
@@ -888,6 +863,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         {date, voltage} dicts) for any site whose status is WARNING or FAIL,
         so the HTML renderer can draw a trend graph.
         """
+        self.__class__._ensure_downloads_exist()
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Network Power",
@@ -1163,24 +1139,47 @@ class TestEnvironmentalPipeline(unittest.TestCase):
     # CALCULATION TESTS
     # ========================================================================
     def test_09_depth_calculation_verification(self):
-        """Validates result accuracy of depth calculations."""
+        """Validates result accuracy of depth calculations.
+
+        Imports calculate_adjusted_depth() directly from dataValidation so the
+        test always exercises the same code path as the pipeline — not a local
+        copy that could drift out of sync.
+
+        Samples 3 rows from validatedDepthData.csv, feeds each row as a
+        single-row DataFrame to calculate_adjusted_depth(), then cross-checks
+        the returned Depth(m)adjusted value against what the pipeline already
+        recorded, within a 2 cm tolerance.
+        """
+        self.__class__._ensure_validated_exists()
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Depth Adjustment Verification",
                 "Data Pipeline Tests",
                 "SKIP",
-                "No validated data found"
+                "No validated data found — pipeline has not run and diagnostic fallback failed"
             )
             self.skipTest("Validated output file not available")
             return
         try:
-            # Load validated data
+            # Lazy import — isolated to this test so a broken dataValidation
+            # module does not crash the entire test runner at startup.
+            from dataValidation import calculate_adjusted_depth
+
             validated_df = load_csv_safely(self.validated_output_file)
             if validated_df is None:
                 self.skipTest("Could not load validated output file")
                 return
-            validated_df = filter_valid_depth_data(validated_df, min_depth=0)
-            if len(validated_df) == 0:
+
+            # Filter for rows that have both raw and adjusted depth values
+            valid_mask = (
+                validated_df['Depth(m)raw'].notna() &
+                validated_df['Depth(m)adjusted'].notna() &
+                (pd.to_numeric(validated_df['Depth(m)raw'], errors='coerce') > 0) &
+                (pd.to_numeric(validated_df['Depth(m)adjusted'], errors='coerce') > 0)
+            )
+            filtered_df = validated_df[valid_mask].copy()
+
+            if len(filtered_df) == 0:
                 self.record_result(
                     "Depth Adjustment Verification",
                     "Data Pipeline Tests",
@@ -1189,60 +1188,82 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 )
                 self.skipTest("No valid depth data available")
                 return
-            # Test random samples
-            num_samples = min(3, len(validated_df))
-            test_samples = validated_df.sample(n=num_samples, random_state=42)
+
+            num_samples = min(3, len(filtered_df))
+            test_samples = filtered_df.sample(n=num_samples, random_state=42)
+
             calculation_results = []
             all_passed = True
+            tolerance = 0.02  # 2 cm
+
             for idx, row in test_samples.iterrows():
                 site = row['Sample Point']
                 date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
-                depth_m_raw = float(row['Depth(m)raw'])
-                depth_m_adjusted_expected = float(row['Depth(m)adjusted'])
-                # Get barometric pressures
-                bom_baro = None
-                logger_baro = None
-                if pd.notna(row.get('BomBaro', '')) and row.get('BomBaro', '') != '':
-                    bom_baro = float(row['BomBaro'])
-                if pd.notna(row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '')) and \
-                   row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)', '') != '':
-                    logger_baro = float(row['Barometric Pressure(RAW)[Main Buffer] (hPa)'])
-                # Calculate adjusted depth
-                calculated_adjusted_m, adjustment_applied = calculate_depth_adjustment(
-                    depth_m_raw, bom_baro, logger_baro
+                expected_adjusted = float(row['Depth(m)adjusted'])
+
+                # Build a single-row DataFrame matching the schema that
+                # calculate_adjusted_depth() expects, using the same column
+                # names produced by dataValidation.process_site_file().
+                row_df = pd.DataFrame([{
+                    'Depth(m)raw':                                  pd.to_numeric(row['Depth(m)raw'], errors='coerce'),
+                    'BomBaro':                                       pd.to_numeric(row.get('BomBaro'), errors='coerce'),
+                    'Barometric Pressure(RAW)[Main Buffer] (hPa)':  pd.to_numeric(row.get('Barometric Pressure(RAW)[Main Buffer] (hPa)'), errors='coerce'),
+                    'Pressure(RAW)[Main Buffer] (PSI)':             pd.to_numeric(row.get('Pressure(RAW)[Main Buffer] (PSI)'), errors='coerce'),
+                    'OTHER - Comments - Text':                       '',
+                }])
+
+                result_df = calculate_adjusted_depth(row_df)
+                calculated_adjusted = float(result_df['Depth(m)adjusted'].iloc[0])
+
+                # If calculate_adjusted_depth returned NaN (e.g. no BOM data),
+                # fall back to raw depth — matching what the pipeline itself does.
+                if pd.isna(calculated_adjusted):
+                    calculated_adjusted = float(row_df['Depth(m)raw'].iloc[0])
+
+                # Identify whether adjustment was applied
+                adjustment_applied = (
+                    abs(calculated_adjusted - float(row_df['Depth(m)raw'].iloc[0])) > 0.001
                 )
-                # Compare with expected
-                tolerance = 0.02 # 2cm tolerance
-                passed = abs(calculated_adjusted_m - depth_m_adjusted_expected) < tolerance
-                calculation_results.append({
-                    'test_num': len(calculation_results) + 1,
-                    'site': site,
-                    'date': date,
-                    'depth_raw': round(depth_m_raw, 2),
-                    'bom_baro': round(bom_baro, 1) if bom_baro else 'N/A',
-                    'logger_baro': round(logger_baro, 1) if logger_baro else 'N/A',
-                    'adjustment_applied': adjustment_applied,
-                    'calculated': calculated_adjusted_m,
-                    'expected': round(depth_m_adjusted_expected, 2),
-                    'difference': round(abs(calculated_adjusted_m - depth_m_adjusted_expected), 3),
-                    'passed': passed
-                })
+
+                bom_val    = row_df['BomBaro'].iloc[0]
+                logger_val = row_df['Barometric Pressure(RAW)[Main Buffer] (hPa)'].iloc[0]
+
+                passed = abs(round(calculated_adjusted, 2) - round(expected_adjusted, 2)) < tolerance
                 if not passed:
                     all_passed = False
-            details = (
-                f"Tested {len(calculation_results)} calculations. "
-                f"Thresholds: depth > {CalculationConstants.MIN_DEPTH_THRESHOLD}m, "
-                f"baro diff > {CalculationConstants.MIN_BARO_DIFF_THRESHOLD} hPa"
-            )
+
+                calculation_results.append({
+                    'test_num':           len(calculation_results) + 1,
+                    'site':               site,
+                    'date':               date,
+                    'depth_raw':          round(float(row_df['Depth(m)raw'].iloc[0]), 2),
+                    'bom_baro':           round(float(bom_val), 1) if pd.notna(bom_val) else 'N/A',
+                    'logger_baro':        round(float(logger_val), 1) if pd.notna(logger_val) else 'N/A',
+                    'adjustment_applied': adjustment_applied,
+                    'calculated':         round(calculated_adjusted, 2),
+                    'expected':           round(expected_adjusted, 2),
+                    'difference':         round(abs(calculated_adjusted - expected_adjusted), 3),
+                    'passed':             passed,
+                })
+
             self.record_result(
                 "Depth Adjustment Verification",
                 "Data Pipeline Tests",
                 "PASS" if all_passed else "FAIL",
-                details,
+                f"Tested {len(calculation_results)} calculations against dataValidation.calculate_adjusted_depth()",
                 {'calculations': calculation_results}
             )
             if not all_passed:
-                self.fail("Some calculations did not match expected values")
+                self.fail("One or more calculated depths did not match expected values within tolerance")
+
+        except ImportError:
+            self.record_result(
+                "Depth Adjustment Verification",
+                "Data Pipeline Tests",
+                "FAIL",
+                "Could not import calculate_adjusted_depth from dataValidation.py — ensure it is on the Python path"
+            )
+            self.fail("dataValidation import failed")
         except Exception as e:
             self.record_result(
                 "Depth Adjustment Verification",
@@ -1264,6 +1285,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
           WARNING : data present but 8–28 days old
           FAIL    : no CSV / empty CSV / no valid data / data older than 28 days
         """
+        self.__class__._ensure_downloads_exist()
         STALE_WARN_DAYS = 7
         STALE_FAIL_DAYS = 28
 
@@ -1447,6 +1469,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         DEPTH_WARN_M      = 3.0
         DEPTH_FAIL_M      = 5.0
 
+        self.__class__._ensure_validated_exists()
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Monthly Statistical Anomalies",

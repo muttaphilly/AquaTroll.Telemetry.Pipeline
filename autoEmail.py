@@ -138,7 +138,7 @@ def send_validated_data_email(csv_path, html_report_path=None):
     f"{'\n'.join(attachments_list)}\n\n"
     "\nThis email is not monitored.\n"
     "\nPlease direct any queries to razvan@maxyengineering.com.au\n\n"
-    "Report generated using open source code available here: "
+    "This report uses freely available open software: "
     "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
     )
   
