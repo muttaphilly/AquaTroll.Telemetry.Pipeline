@@ -105,7 +105,9 @@ def parse_email_list(email_string):
 
 def send_validated_data_email(csv_path, html_report_path=None):
     """
-    Send validated depth data email with CSV & HTML A/B tests.
+    Send validated depth data email with CSV & test report.
+    Attaches the PDF version of the report if it exists alongside the HTML,
+    otherwise falls back to attaching the HTML file.
     
     Args:
         csv_path (str): Path to CSV data file (required)
@@ -127,9 +129,15 @@ def send_validated_data_email(csv_path, html_report_path=None):
     attachments = [csv_path]
     attachments_list = [f"* {os.path.basename(csv_path)}"]
     
-    if html_report_path and os.path.exists(html_report_path):
-        attachments.append(html_report_path)
-        attachments_list.append(f"* {os.path.basename(html_report_path)}")
+    if html_report_path:
+        # Prefer PDF if WeasyPrint produced one alongside the HTML
+        pdf_report_path = os.path.splitext(html_report_path)[0] + '.pdf'
+        if os.path.exists(pdf_report_path):
+            attachments.append(pdf_report_path)
+            attachments_list.append(f"* {os.path.basename(pdf_report_path)}")
+        elif os.path.exists(html_report_path):
+            attachments.append(html_report_path)
+            attachments_list.append(f"* {os.path.basename(html_report_path)}")
     
     # Format body with bullet points
     body = (
@@ -138,7 +146,7 @@ def send_validated_data_email(csv_path, html_report_path=None):
     f"{'\n'.join(attachments_list)}\n\n"
     "\nThis email is not monitored.\n"
     "\nPlease direct any queries to razvan@maxyengineering.com.au\n\n"
-    "This report uses freely available open software: "
+    "Report generated using open source code available here: "
     "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
     )
   

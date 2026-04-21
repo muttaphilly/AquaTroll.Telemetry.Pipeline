@@ -400,7 +400,7 @@ def calculate_adjusted_depth(df: pd.DataFrame, water_density: float = 1000.0,
     )
     
     skip_conditions = [
-        (shallow, "Shallow depth: no adjustment applied"),
+        (shallow, "Very shallow depth: no adjustment applied"),
         (large_diff, "Large barometric difference observed: no adjustment applied"),
         (small_diff, "Small barometric difference: no adjustment applied (possible sensor noise)"),
         (excessive_drift, "Large sensor drift detected (>20 hPa): adjusted value formula not applied"),

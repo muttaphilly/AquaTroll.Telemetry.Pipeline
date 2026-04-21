@@ -1,6 +1,7 @@
-  python-dotenv
-  pandas
-  numpy
-  requests
-  beautifulsoup4
-  python-dateutil
+python-dotenv
+pandas
+numpy
+requests
+beautifulsoup4
+python-dateutil
+weasyprint

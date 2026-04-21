@@ -100,37 +100,55 @@ HTML_HEADER = """
 <head>
     <title>Pipeline Test Report - {timestamp}</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+        @page {{ margin: 10mm 12mm; }}
+        body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0;
+                background-color: #f5f5f5; }}
         .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-        .banner {{ width: 100%; height: 150px; object-fit: cover; border-radius: 8px;
-                   margin-bottom: 20px; background-color: #e0e0e0; }}
-        .summary {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;
-                   box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .test-section {{ background: white; padding: 20px; margin-bottom: 20px;
-                        border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .test-description {{ color: #6c757d; font-style: italic; margin: 10px 0; padding: 10px;
-                            background-color: #f8f9fa; border-left: 4px solid #667eea; }}
+                  color: white; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; }}
+        .header h1 {{ margin: 0 0 4px 0; font-size: 16px; }}
+        .header p  {{ margin: 0; font-size: 10px; }}
+        .banner {{ width: 100%; height: 120px; object-fit: cover; border-radius: 6px;
+                   margin-bottom: 12px; background-color: #e0e0e0; display: block; }}
+        .summary {{ background: white; padding: 12px 16px; border-radius: 6px;
+                    margin-bottom: 12px; }}
+        .summary h2 {{ font-size: 13px; margin: 0 0 8px 0; }}
+        .test-section {{ background: white; padding: 12px 16px; margin-bottom: 10px;
+                         border-radius: 6px; }}
+        .test-section h3 {{ font-size: 12px; margin: 0 0 6px 0; }}
+        .test-description {{ color: #6c757d; font-style: italic; margin: 6px 0;
+                             padding: 6px 10px; font-size: 10px;
+                             background-color: #f8f9fa; border-left: 3px solid #667eea; }}
+        h2 {{ font-size: 14px; margin: 14px 0 6px 0; }}
+        h4 {{ font-size: 11px; margin: 8px 0 4px 0; }}
         .pass {{ color: #28a745; font-weight: bold; }}
         .fail {{ color: #dc3545; font-weight: bold; }}
         .warning {{ color: #ffc107; font-weight: bold; }}
         .skip {{ color: #6c757d; font-style: italic; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-        th {{ background-color: #f8f9fa; padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6; }}
-        td {{ padding: 8px; border-bottom: 1px solid #dee2e6; }}
-        .column-list {{ background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; }}
-        .calculation-table {{ margin-top: 15px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 6px;
+                 font-size: 10px; }}
+        th {{ background-color: #f8f9fa; padding: 6px 8px; text-align: left;
+              border-bottom: 2px solid #dee2e6; font-size: 10px; }}
+        td {{ padding: 5px 8px; border-bottom: 1px solid #dee2e6; }}
+        .column-list {{ background: #f8f9fa; padding: 8px; border-radius: 4px;
+                        margin: 6px 0; font-size: 10px; }}
+        .calculation-table {{ margin-top: 8px; }}
         .anomaly {{ background-color: #fff3cd; }}
-        .footer {{ text-align: center; color: #6c757d; margin-top: 40px; padding: 20px; }}
-        pre {{ background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+        .footer {{ text-align: center; color: #6c757d; margin-top: 20px;
+                   padding: 12px; font-size: 10px; }}
+        pre {{ background: #f8f9fa; padding: 8px; border-radius: 4px;
+               overflow-x: auto; font-size: 9px; }}
+        p {{ margin: 4px 0; font-size: 11px; }}
+        ul {{ margin: 4px 0; padding-left: 18px; font-size: 11px; }}
+        li {{ margin: 2px 0; }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🔬 AquaTroll Depth Data Pipeline: Test Report</h1>
+        <h1>AquaTroll Depth Data Pipeline: Test Report</h1>
         <p>Generated: {timestamp} on {computer_name} by {username}</p>
     </div>
-    <img src="images/gorgeMonitoring.jpg" alt="Gorge Monitoring Banner" class="banner" onerror="this.style.display='none'">
+    <img src="{banner_path}" alt="Gorge Monitoring Banner" class="banner"
+         onerror="this.style.display='none'">
 """
 HTML_FOOTER = """
     <div class="footer">
@@ -139,6 +157,25 @@ HTML_FOOTER = """
 </body>
 </html>
 """
+# ============================================================================
+# CALCULATION CONSTANTS
+# ============================================================================
+class CalculationConstants:
+    """
+    Constants used in depth calculation and pressure conversion.
+    These values match logic used in main pipeline (dataValidation.py).
+    """
+    # Pressure conversion
+    HPA_TO_PSI = 0.0145038
+    PSI_TO_HPA = 68.9476
+   
+    # Depth adjustment (AquaTroll specifications)
+    CONVERSION_FACTOR = 0.70307 # Pressure differential to water column height
+   
+    # Thresholds for adjustment application
+    MIN_DEPTH_THRESHOLD = 0.3 # meters - prevents corrections in shallow pools
+    MIN_BARO_DIFF_THRESHOLD = 5.0 # hPa - prevents corrections for sensor noise
+    MAX_BARO_DIFF_THRESHOLD = 20.0 # hPa - prevents corrections for sensor malfunction
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -161,7 +198,62 @@ def load_csv_safely(filepath, logger=None):
         if logger:
             logger.error(f"Error loading {filepath}: {str(e)}")
         return None
-
+def filter_valid_depth_data(df, min_depth=0):
+    """
+    Filter dataframe for rows with valid depth measurements.
+    Args:
+        df (pd.DataFrame): Input dataframe
+        min_depth (float): Minimum depth threshold
+    Returns:
+        pd.DataFrame: Filtered dataframe
+    """
+    return df[
+        (df['Depth(m)raw'].notna()) &
+        (df['Depth(m)raw'] > min_depth) &
+        (df['Depth(m)adjusted'].notna()) &
+        (df['Depth(m)adjusted'] > min_depth)
+    ]
+def should_apply_depth_adjustment(depth_m, bom_baro, logger_baro):
+    """
+    Determine if depth adjustment should be applied based on thresholds.
+    Args:
+        depth_m (float): Raw depth in meters
+        bom_baro (float): BOM barometric pressure in hPa
+        logger_baro (float): Logger barometric pressure in hPa
+    Returns:
+        bool: True if adjustment should be applied
+    """
+    if bom_baro is None or logger_baro is None:
+        return False
+    delta_p_hpa = bom_baro - logger_baro
+    return (
+        depth_m > CalculationConstants.MIN_DEPTH_THRESHOLD and
+        delta_p_hpa > CalculationConstants.MIN_BARO_DIFF_THRESHOLD and
+        delta_p_hpa <= CalculationConstants.MAX_BARO_DIFF_THRESHOLD
+    )
+def calculate_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
+    """
+    Calculate adjusted depth using AquaTroll formula with thresholds.
+    This implements the exact logic from dataValidation.py:
+    1. Check if thresholds are met (depth > 0.3m, baro diff > 5 hPa)
+    2. If thresholds met, apply adjustment formula
+    3. Otherwise, return raw depth unchanged
+    Args:
+        depth_m_raw (float): Raw depth in meters
+        bom_baro (float): BOM barometric pressure in hPa
+        logger_baro (float): Logger barometric pressure in hPa
+    Returns:
+        tuple: (adjusted_depth_m, adjustment_applied)
+    """
+    # Check thresholds
+    if not should_apply_depth_adjustment(depth_m_raw, bom_baro, logger_baro):
+        return round(depth_m_raw, 2), False
+    # Calculate adjustment
+    delta_p_hpa = bom_baro - logger_baro
+    delta_p_psi = delta_p_hpa * CalculationConstants.HPA_TO_PSI
+    depth_adjustment_m = CalculationConstants.CONVERSION_FACTOR * delta_p_psi
+    adjusted_depth = depth_m_raw + depth_adjustment_m
+    return round(adjusted_depth, 2), True
 # ============================================================================
 # MAIN TEST CLASS
 # ============================================================================
@@ -197,54 +289,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             cls.transformed_data_path,
             'validatedDepthData.csv'
         )
-    @classmethod
-    def _ensure_downloads_exist(cls):
-        """
-        Diagnostic fallback: if data_downloads/ is missing or empty, silently
-        run httpLoggerScraper.run() to produce the CSVs.  This lets testsAB.py
-        function as a standalone diagnostic tool even when the pipeline hasn't run.
-        """
-        csv_files = []
-        if os.path.exists(cls.data_downloads_path):
-            csv_files = [
-                f for f in os.listdir(cls.data_downloads_path)
-                if f.endswith('.csv') and 'baro' not in f.lower()
-                and f != 'weather_data.csv'
-            ]
-        if not csv_files:
-            try:
-                import httpLoggerScraper
-                logging.getLogger(__name__).warning(
-                    "data_downloads/ empty — running httpLoggerScraper in diagnostic mode"
-                )
-                httpLoggerScraper.run(cls.data_downloads_path)
-            except Exception as e:
-                logging.getLogger(__name__).error(
-                    f"Diagnostic scrape failed: {e}"
-                )
-
-    @classmethod
-    def _ensure_validated_exists(cls):
-        """
-        Diagnostic fallback: if validatedDepthData.csv is missing, silently run
-        dataValidation.consolidate_csv_files() to produce it.
-        """
-        if not os.path.exists(cls.validated_output_file):
-            try:
-                import dataValidation
-                os.makedirs(cls.transformed_data_path, exist_ok=True)
-                logging.getLogger(__name__).warning(
-                    "validatedDepthData.csv not found — running dataValidation in diagnostic mode"
-                )
-                dataValidation.consolidate_csv_files(
-                    cls.data_downloads_path,
-                    cls.validated_output_file
-                )
-            except Exception as e:
-                logging.getLogger(__name__).error(
-                    f"Diagnostic validation failed: {e}"
-                )
-
     def record_result(self, test_name, category, status, details="", data=None):
         """
         Record test results for HTML report generation.
@@ -735,7 +779,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Weather Data Structure",
                     "Data Pipeline Tests",
                     "PASS",
-                    f"Weather table structure verified: {total_cells} columns, rainfall at position 4 ({position_4_value} mm), pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
+                    f"Weather table structure verified: {total_cells} columns,\n rainfall at position 4 ({position_4_value} mm), pressure data at positions 15 ({position_15_value} hPa) and 21 ({position_21_value} hPa)"
                 )
             else:
                 issues = []
@@ -778,7 +822,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             self.fail(f"Failed to parse weather data: {e}")
     def test_06_logger_data_structure(self):
         """Test logger CSV data structure."""
-        self.__class__._ensure_downloads_exist()
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Logger Data Structure",
@@ -863,7 +906,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         {date, voltage} dicts) for any site whose status is WARNING or FAIL,
         so the HTML renderer can draw a trend graph.
         """
-        self.__class__._ensure_downloads_exist()
         if not os.path.exists(self.data_downloads_path):
             self.record_result(
                 "Network Power",
@@ -1148,15 +1190,16 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         Samples 3 rows from validatedDepthData.csv, feeds each row as a
         single-row DataFrame to calculate_adjusted_depth(), then cross-checks
         the returned Depth(m)adjusted value against what the pipeline already
-        recorded, within a 2 cm tolerance.
+        recorded, within a 2 cm tolerance. The reason the pipeline did or did
+        not apply an adjustment is captured from the OTHER - Comments - Text
+        column and shown in the report.
         """
-        self.__class__._ensure_validated_exists()
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Depth Adjustment Verification",
                 "Data Pipeline Tests",
                 "SKIP",
-                "No validated data found — pipeline has not run and diagnostic fallback failed"
+                "No validated data found — pipeline has not run"
             )
             self.skipTest("Validated output file not available")
             return
@@ -1197,13 +1240,12 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             tolerance = 0.02  # 2 cm
 
             for idx, row in test_samples.iterrows():
-                site = row['Sample Point']
-                date = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
+                site     = row['Sample Point']
+                date     = row['Date Time (dd/mm/yyyy hh24:mi:ss)']
                 expected_adjusted = float(row['Depth(m)adjusted'])
 
                 # Build a single-row DataFrame matching the schema that
-                # calculate_adjusted_depth() expects, using the same column
-                # names produced by dataValidation.process_site_file().
+                # calculate_adjusted_depth() expects.
                 row_df = pd.DataFrame([{
                     'Depth(m)raw':                                  pd.to_numeric(row['Depth(m)raw'], errors='coerce'),
                     'BomBaro':                                       pd.to_numeric(row.get('BomBaro'), errors='coerce'),
@@ -1212,15 +1254,15 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     'OTHER - Comments - Text':                       '',
                 }])
 
-                result_df = calculate_adjusted_depth(row_df)
+                result_df           = calculate_adjusted_depth(row_df)
                 calculated_adjusted = float(result_df['Depth(m)adjusted'].iloc[0])
+                reason              = result_df['OTHER - Comments - Text'].iloc[0] or ''
 
                 # If calculate_adjusted_depth returned NaN (e.g. no BOM data),
                 # fall back to raw depth — matching what the pipeline itself does.
                 if pd.isna(calculated_adjusted):
                     calculated_adjusted = float(row_df['Depth(m)raw'].iloc[0])
 
-                # Identify whether adjustment was applied
                 adjustment_applied = (
                     abs(calculated_adjusted - float(row_df['Depth(m)raw'].iloc[0])) > 0.001
                 )
@@ -1244,6 +1286,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     'expected':           round(expected_adjusted, 2),
                     'difference':         round(abs(calculated_adjusted - expected_adjusted), 3),
                     'passed':             passed,
+                    'reason':             reason,
                 })
 
             self.record_result(
@@ -1285,7 +1328,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
           WARNING : data present but 8–28 days old
           FAIL    : no CSV / empty CSV / no valid data / data older than 28 days
         """
-        self.__class__._ensure_downloads_exist()
         STALE_WARN_DAYS = 7
         STALE_FAIL_DAYS = 28
 
@@ -1469,7 +1511,6 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         DEPTH_WARN_M      = 3.0
         DEPTH_FAIL_M      = 5.0
 
-        self.__class__._ensure_validated_exists()
         if not os.path.exists(self.validated_output_file):
             self.record_result(
                 "Monthly Statistical Anomalies",
@@ -1658,11 +1699,17 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         failed = sum(1 for r in cls.results if r['status'] == 'FAIL')
         warnings = sum(1 for r in cls.results if r['status'] == 'WARNING')
         skipped = sum(1 for r in cls.results if r['status'] == 'SKIP')
+        # Resolve banner image as absolute path so WeasyPrint can find it
+        # regardless of the working directory the script is called from.
+        banner_abs  = os.path.join(cls.script_dir, 'images', 'gorgeMonitoring.jpg')
+        banner_path = banner_abs if os.path.exists(banner_abs) else ''
+
         # Start HTML
         html = HTML_HEADER.format(
             timestamp=timestamp,
             computer_name=COMPUTER_NAME,
-            username=USERNAME
+            username=USERNAME,
+            banner_path=banner_path
         )
         # Summary section
         html += f"""
@@ -1750,14 +1797,27 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 html += '</div>'
         # Footer
         html += HTML_FOOTER
-        # Save report
+
+        # ── Save HTML (always kept on disk) ─────────────────────────────────
         output_dir = os.path.dirname(cls.report_filename)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        with open(cls.report_filename, 'w', encoding='utf-8') as f:
+        html_path = cls.report_filename  # already ends in .html
+        with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html)
-        print(f"\n{'='*60}")
-        print(f"TEST REPORT GENERATED: {cls.report_filename}")
+
+        # ── Convert to PDF via WeasyPrint (silent fallback if unavailable) ──
+        pdf_path = os.path.splitext(html_path)[0] + '.pdf'
+        try:
+            from weasyprint import HTML as WeasyprintHTML
+            WeasyprintHTML(filename=html_path).write_pdf(pdf_path)
+            print(f"\n{'='*60}")
+            print(f"TEST REPORT GENERATED: {pdf_path}")
+            print(f"HTML ALSO SAVED:       {html_path}")
+        except Exception:
+            print(f"\n{'='*60}")
+            print(f"TEST REPORT GENERATED: {html_path}")
+            print(f"PDF conversion unavailable — HTML report saved instead")
         print(f"{'='*60}")
         print(f"Total: {total_tests} | Passed: {passed} | Failed: {failed} | Warnings: {warnings} | Skipped: {skipped}")
         print(f"{'='*60}\n")
@@ -1798,9 +1858,9 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 if 'nav_option' in data:
                     html += f'<li>Nav Option: {data["nav_option"]}</li>'
                 if 'node_or_tree_present' in data:
-                    html += f'<li>Node/Tree Reference: {"✓" if data["node_or_tree_present"] else "✗"}</li>'
+                    html += f'<li>Node/Tree Reference: {"&check;" if data["node_or_tree_present"] else "&cross;"}</li>'
                 if 'data_table' in data:
-                    html += f'<li>Data Table: {"✓" if data["data_table"] else "✗"}</li>'
+                    html += f'<li>Data Table: {"&check;" if data["data_table"] else "&cross;"}</li>'
                 html += '</ul>'
         elif test_name == 'Network Power':
             if 'battery_results' in data:
@@ -1936,22 +1996,23 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             if data.get('enabled'):
                 html += f'<h4>Enabled Sites ({len(data["enabled"])}):</h4><ul>'
                 for site in data['enabled']:
-                    html += f'<li>✓ {site}</li>'
+                    html += f'<li>&check; {site}</li>'
                 html += '</ul>'
             if data.get('disabled'):
                 html += f'<h4>Disabled Sites ({len(data["disabled"])}):</h4><ul>'
                 for site in data['disabled']:
-                    html += f'<li>✓ {site}</li>'
+                    html += f'<li>&check; {site}</li>'
                 html += '</ul>'
         elif test_name == 'Depth Adjustment Verification':
             if 'calculations' in data:
                 html += '<h4>Calculation Results:</h4>'
                 html += '<table class="calculation-table">'
-                html += '<tr><th>Test</th><th>Site</th><th>Raw (m)</th><th>BOM</th><th>Logger</th>'
-                html += '<th>Adj?</th><th>Calc</th><th>Expected</th><th>Diff</th><th>✓</th></tr>'
+                html += '<tr><th>Test</th><th>Site</th><th>Depth</th><th>Weather Station</th><th>AquaTroll</th>'
+                html += '<th>Adj?</th><th>Calc</th><th>Expected</th><th>Diff</th><th>Reason</th><th>&check;</th></tr>'
                 for calc in data['calculations']:
-                    result   = '<span class="pass">✓</span>' if calc['passed'] else '<span class="fail">✗</span>'
+                    result   = '<span class="pass">&check;</span>' if calc['passed'] else '<span class="fail">&cross;</span>'
                     adj_text = 'Yes' if calc['adjustment_applied'] else 'No'
+                    reason   = calc.get('reason', '')
                     html += f"""<tr>
                         <td>{calc['test_num']}</td>
                         <td>{calc['site']}</td>
@@ -1962,6 +2023,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         <td>{calc['calculated']}</td>
                         <td>{calc['expected']}</td>
                         <td>{calc['difference']}</td>
+                        <td style="color:#6c757d;font-style:italic;font-size:0.9em;">{reason}</td>
                         <td>{result}</td>
                     </tr>"""
                 html += '</table>'

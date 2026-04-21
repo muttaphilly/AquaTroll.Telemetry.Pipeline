@@ -40,7 +40,7 @@ The main script, `runPipeline.py`, orchestrates the following steps:
    * Merges external weather data with the logger data based on date.
    * Calculates an 'adjusted depth' by comparing barometer data from the logger's internal sensor and the external weather station. Uses In-Situ's formula specific to the AquaTroll sensors.
    * Monitors telemetry unit battery voltage against low voltage thresholds.
-   * Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & `abTestsReport.html`) saved in `transformed_data/`.
+   * Consolidates processed data into final output files (`validatedDepthData.csv`, `SWLVLGenericTemplate_greaterPBOPools.csv` & `abTestsReport.pdf`) saved in `transformed_data/`.
 4. **Emailing Results (`autoEmail.py`):** Sends the generated CSV files as attachments to configured email recipients.
 
 Configuration for site details, email settings, and target URLs is managed through the `.env` file.
@@ -60,11 +60,12 @@ An additional minimum depth threshold of **0.3 metres** prevents corrections in 
 Users should verify if there are any local variations between observed logger values and weather station data post deployment. If significant discrepancies are noted (e.g., individual instruments, elevation differences or microclimates), consider modifying these thresholds in `dataValidation.py` and `testsAB.py` to better suit your specific environment. The goal is to align the deployed, field-calibrated AquaTroll with the observed weather station hPa value.
 
 ## Quality Assurance and Testing
-`testsAB.py` runs 11 tests when the pipeline executes, generating a self-contained HTML report (`abTestsReport.html`) saved to `transformed_data/` and emailed to the validation recipient list. The report is designed to make monthly QAQC straightforward for non-technical reviewers with a clear PASS / WARNING / FAIL status.
 
-The report is stamped with the machine name, username, and timestamp for audit trail purposes and is structured into the following sections:
+Each time the pipeline runs, it automatically generates a PDF report (`abTestsReport.pdf`) saved to `transformed_data/` and attached to the validation email. The report is designed to give the environmental team a clear, at-a-glance view of whether the field equipment is online and the software is running correctly — no technical knowledge required.
 
-The report works through six areas. First it checks that the pipeline can actually reach everything it needs to — the weather website, the logger portal, and the data download pages. It then confirms the scraped data landed in the right format, looking for the expected columns and table positions in both the weather and logger files. Battery voltage is checked for each active site, with a warning triggered if any reading drops below the threshold. The site list is verified against your configuration to make sure no locations are missing or unexpectedly disabled. To confirm the maths are on point, I run three depth readings taken randomly, recalculated and then compared against the pipeline's output. Any discrepancy greater than 2 cm is flagged. Finally, the data itself is scanned for anything unusual: depth changes greater than 15% or pressure changes greater than 2% between readings are also highlighted for review, with a note against any depth spike that coincided with a rain event.
+Each check returns a simple **PASS**, **WARNING**, or **FAIL**. If everything is green, no action is needed. If a WARNING or FAIL appears, it is intended as a prompt to investigate rather than an immediate cause for concern — a low battery flag, for example, may simply mean a site is approaching its normal replacement window.
+
+The report is stamped with the machine name, username, and timestamp for audit trail purposes.
 
 ## Installation
 
@@ -80,18 +81,32 @@ python3 -m venv venv
 source venv/bin/activate  # On Linux/Mac
 ```
 
-3. Install dependencies:
+3. Install system-level dependencies for PDF report generation:
+
+   WeasyPrint (used to generate the PDF report) requires libraries that must be installed at the OS level before running `pip install`.
+
+   **macOS (Homebrew):**
+   ```bash
+   brew install pango libffi jpeg openjpeg
+   ```
+
+   **Raspberry Pi / Debian Linux:**
+   ```bash
+   sudo apt install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi-dev libjpeg-dev libopenjp2-7
+   ```
+
+4. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configure environment:
+5. Configure environment:
 ```bash
 cp .env.example .env
 # Edit .env with your credentials and site configuration
 ```
 
-5. Test the pipeline:
+6. Test the pipeline:
 ```bash
 python runPipeline.py
 ```
@@ -150,11 +165,11 @@ Must match the CSV filename without extension. CSV files will be named `{site_id
 
 | Field | Description |
 |---|---|
-| `display_name` | Human-readable site name used in logs |
-| `nav_option` | Portal navigation option ID |
-| `depth_conversion_type` | Depth unit conversion to apply (see above) |
+| `display_name` | Give it a site name |
+| `nav_option` | Set the upper navigation site ID from logger portal |
+| `depth_conversion_type` | Depth unit conversion to apply |
 | `pressure_unit` | Pressure unit of the logger's barometric sensor |
-| `enabled` | Include this site in the pipeline run |
+| `enabled` | Adds the site to the pipeline run |
 | `level_channel_id` | Channel ID for depth data download |
 | `baro_channel_id` | Channel ID for barometric pressure data download |
 | `battery_channel_id` | Channel ID for battery voltage data download |
