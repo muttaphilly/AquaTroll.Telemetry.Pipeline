@@ -121,6 +121,7 @@ PAUSE_SECONDS=3  # Delay between site scrapes (seconds) — prevents rapid seque
 WEATHER_URL="http://www.independentWeatherStation//your-station-id.shtml"
 RECIPIENT_VALIDATION="team@company.com,supervisor@company.com"
 RECIPIENT_DATABASE="database-upload@company.com"
+HARDWARE_CONTACT="hardware@Supplies.com.au"
 VALIDATION_EMAIL_SUBJECT="Logger Validation Report"
 DATABASE_EMAIL_SUBJECT="{month} Depth Data"
 DATABASE_EMAIL_BODY="For Upload To Database: {filename}"

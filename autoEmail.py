@@ -105,9 +105,7 @@ def parse_email_list(email_string):
 
 def send_validated_data_email(csv_path, html_report_path=None):
     """
-    Send validated depth data email with CSV & test report.
-    Attaches the PDF version of the report if it exists alongside the HTML,
-    otherwise falls back to attaching the HTML file.
+    Send validated depth data email with CSV & HTML A/B tests.
     
     Args:
         csv_path (str): Path to CSV data file (required)
@@ -125,12 +123,11 @@ def send_validated_data_email(csv_path, html_report_path=None):
     
     subject = os.getenv('VALIDATION_EMAIL_SUBJECT', "Logger Validation Report")
     
-    # Build attachment list
+    # Build attachment list — prefer PDF if WeasyPrint produced one
     attachments = [csv_path]
     attachments_list = [f"* {os.path.basename(csv_path)}"]
-    
+
     if html_report_path:
-        # Prefer PDF if WeasyPrint produced one alongside the HTML
         pdf_report_path = os.path.splitext(html_report_path)[0] + '.pdf'
         if os.path.exists(pdf_report_path):
             attachments.append(pdf_report_path)
@@ -138,16 +135,22 @@ def send_validated_data_email(csv_path, html_report_path=None):
         elif os.path.exists(html_report_path):
             attachments.append(html_report_path)
             attachments_list.append(f"* {os.path.basename(html_report_path)}")
-    
-    # Format body with bullet points
+
+    hardware_contact = os.getenv('HARDWARE_CONTACT', '')
+    contact_line = (
+        f"Please direct any queries to {hardware_contact}"
+        if hardware_contact
+        else "Please contact your system administrator for queries."
+    )
+
     body = (
-    f"GPO Environment\n\n"
-    f"Please find attached validated depth data for {current_month}:\n"
-    f"{'\n'.join(attachments_list)}\n\n"
-    "\nThis email is not monitored.\n"
-    "\nPlease direct any queries to razvan@maxyengineering.com.au\n\n"
-    "Report generated using open source code available here: "
-    "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
+        f"GPO Environment\n\n"
+        f"Please find attached validated depth data for {current_month}:\n"
+        f"{chr(10).join(attachments_list)}\n\n"
+        f"This email is not monitored.\n"
+        f"{contact_line}\n\n"
+        "Built on open source software. Code & documentation available at:\n"
+        "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
     )
   
     return send_email_with_attachments(recipients, subject, body, attachments)
@@ -171,17 +174,27 @@ def send_database_email(attachment_path):
     
     subject_template = os.getenv('DATABASE_EMAIL_SUBJECT', "{month} Depth Data")
     subject = subject_template.format(month=current_month)
-    
-    body_template = os.getenv(
-    'DATABASE_EMAIL_BODY',
-    (
-        "GPO Environment\n\n"
-        "For Upload To Database: {filename}\n\n"
-        "\nThis email is not monitored.\n"
-        "Please direct any queries to razvan@maxyengineering.com.au"
+
+    hardware_contact = os.getenv('HARDWARE_CONTACT', '')
+    contact_line = (
+        f"Please direct any queries to {hardware_contact}"
+        if hardware_contact
+        else "Please contact your system administrator for queries."
     )
-)
-   
-    body = body_template.format(filename=os.path.basename(attachment_path))
+
+    body_template = os.getenv(
+        'DATABASE_EMAIL_BODY',
+        (
+            "GPO Environment\n\n"
+            "For Upload To SQL Database: {filename}\n\n"
+            "This email is not monitored.\n"
+            "{contact_line}"
+        )
+    )
+
+    body = body_template.format(
+        filename=os.path.basename(attachment_path),
+        contact_line=contact_line
+    )
     
     return send_email_with_attachments(recipients, subject, body, attachment_path)

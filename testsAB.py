@@ -52,22 +52,21 @@ TEST_DESCRIPTIONS = {
     ),
     "Logger Portal Access": (
         "Checks connectivity & provided authentication credentials allow for a "
-        "successful login to the portal website."
+        "successful login to the AquaTroll website."
     ),
     "Logger Portal Navigation": (
         "Verifies ability to navigate and identify which display structure is in use (node or tables)"
     ),
     "Logger Portal Data Extraction": (
-        "Confirms the presence and functionality of CSV download button for data "
-        "extraction."
+        "Confirms the presence and functionality of data download button."
     ),
     "Weather Data Structure": (
-        "Verifies weather website accessibility and confirms the presence of pressure data "
-        "at the expected positions (9 am at position 15, 3 pm at position 21) and rainfall "
+        "Verifies weather website accessibility and confirms the presence of data "
+        "at the expected positions in array (9 am at position 15, 3 pm at position 21) and rainfall "
         "data at position 4."
     ),
     "Logger Data Structure": (
-        "Checks that downloaded logger CSV files contain all required columns for"
+        "Checks that downloaded data contains all required columns for"
         "for analysis (Date, Time, Level and Battery.)"
     ),
     "Network Power": (
@@ -77,7 +76,7 @@ TEST_DESCRIPTIONS = {
         "Checks which sites are setup by reading from the SITES_CONFIG env variable, "
     ),
     "Network Availability": (
-        "Locates last recorded depth reading for each enabled site. "
+        "Locates last recorded depth reading for active site(s). "
         "Helpful for determining whether a pool has gone dry or if the equipment is faulty."
     ),
     "Depth Adjustment Verification": (
@@ -87,8 +86,8 @@ TEST_DESCRIPTIONS = {
         "corrections from very shallow/dry pools and sensor noise."
     ),
     "Monthly Statistical Anomalies": (
-        "Analyses validated data for any statistical anomalies; Namely by flagging "
-        "depth changes >15%, unrealistic values and/or pressure changes >2% for review."
+        "Picks up data for review with any 1 day depth changes >15%,  "
+        "pressure changes >2% plus any other statistically dubious values"
     )
 }
 # ============================================================================
@@ -102,51 +101,71 @@ HTML_HEADER = """
     <style>
         @page {{ margin: 10mm 12mm; }}
         body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0;
-                background-color: #f5f5f5; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; }}
-        .header h1 {{ margin: 0 0 4px 0; font-size: 16px; }}
-        .header p  {{ margin: 0; font-size: 10px; }}
-        .banner {{ width: 100%; height: 120px; object-fit: cover; border-radius: 6px;
-                   margin-bottom: 12px; background-color: #e0e0e0; display: block; }}
-        .summary {{ background: white; padding: 12px 16px; border-radius: 6px;
-                    margin-bottom: 12px; }}
-        .summary h2 {{ font-size: 13px; margin: 0 0 8px 0; }}
+                background-color: #cfd6d1; color: #1c1917; }}
+        .banner {{ width: 100%; height: 160px; object-fit: cover; border-radius: 6px;
+                   margin-bottom: 12px; background-color: #b5bfba; display: block; }}
+        .summary {{ background: white; padding: 0 0 16px 0; border-radius: 6px;
+                    margin-bottom: 12px; overflow: hidden; }}
+        .summary-title-block {{ background-color: #d5cbae; padding: 12px 16px 10px 16px;
+                                margin-bottom: 12px; }}
+        .summary-title-block h1 {{ margin: 0 0 3px 0; font-size: 15px; font-weight: 600;
+                                   letter-spacing: 0.01em; color: #1c1917; }}
+        .summary-title-block p  {{ margin: 0; font-size: 9px; color: #555; }}
+        .section-heading {{ background: #cfd6d1; border-radius: 6px;
+                            margin-bottom: 8px; overflow: hidden; }}
+        .section-heading h2 {{ font-size: 13px; font-weight: 600; color: #1c1917;
+                               background-color: #cfd6d1; padding: 8px 16px;
+                               margin: 0; border-radius: 0; text-align: center;
+                               width: 100%; display: block; }}
         .test-section {{ background: white; padding: 12px 16px; margin-bottom: 10px;
                          border-radius: 6px; }}
-        .test-section h3 {{ font-size: 12px; margin: 0 0 6px 0; }}
+        .test-section h3 {{ font-size: 12px; margin: 0 0 6px 0;
+                            color: #1c1917; font-weight: 600; }}
         .test-description {{ color: #6c757d; font-style: italic; margin: 6px 0;
                              padding: 6px 10px; font-size: 10px;
-                             background-color: #f8f9fa; border-left: 3px solid #667eea; }}
-        h2 {{ font-size: 14px; margin: 14px 0 6px 0; }}
+                             background-color: #f0f2f1; border-left: 3px solid #bd3c35; }}
         h4 {{ font-size: 11px; margin: 8px 0 4px 0; }}
         .pass {{ color: #28a745; font-weight: bold; }}
         .fail {{ color: #dc3545; font-weight: bold; }}
-        .warning {{ color: #ffc107; font-weight: bold; }}
+        .warning {{ color: #b8860b; font-weight: bold; }}
         .skip {{ color: #6c757d; font-style: italic; }}
         table {{ width: 100%; border-collapse: collapse; margin-top: 6px;
                  font-size: 10px; }}
-        th {{ background-color: #f8f9fa; padding: 6px 8px; text-align: left;
-              border-bottom: 2px solid #dee2e6; font-size: 10px; }}
+        th {{ background-color: #f0f2f1; padding: 6px 8px; text-align: left;
+              border-bottom: 2px solid #d5cbae; font-size: 10px; }}
         td {{ padding: 5px 8px; border-bottom: 1px solid #dee2e6; }}
-        .column-list {{ background: #f8f9fa; padding: 8px; border-radius: 4px;
+        .column-list {{ background: #f0f2f1; padding: 8px; border-radius: 4px;
                         margin: 6px 0; font-size: 10px; }}
         .calculation-table {{ margin-top: 8px; }}
         .anomaly {{ background-color: #fff3cd; }}
         .footer {{ text-align: center; color: #6c757d; margin-top: 20px;
                    padding: 12px; font-size: 10px; }}
-        pre {{ background: #f8f9fa; padding: 8px; border-radius: 4px;
+        pre {{ background: #f0f2f1; padding: 8px; border-radius: 4px;
                overflow-x: auto; font-size: 9px; }}
         p {{ margin: 4px 0; font-size: 11px; }}
         ul {{ margin: 4px 0; padding-left: 18px; font-size: 11px; }}
         li {{ margin: 2px 0; }}
+        /* Stoplight summary */
+        .stoplight-intro {{ text-align: center; color: #555; font-size: 11px;
+                            margin: 8px 16px 16px 16px; }}
+        .stoplight {{ display: flex; justify-content: center; gap: 16px;
+                      margin: 0 16px 4px 16px; }}
+        .stoplight-cell {{ flex: 1; max-width: 120px; border-radius: 6px;
+                           padding: 14px 8px 10px 8px; text-align: center; }}
+        .stoplight-num   {{ font-size: 32px; font-weight: 700;
+                            line-height: 1; display: block; }}
+        .stoplight-label {{ font-size: 9px; font-weight: 600;
+                            letter-spacing: 0.08em; text-transform: uppercase;
+                            display: block; margin-top: 4px; }}
+        .sl-pass    {{ background-color: #4a8c3f; }}
+        .sl-pass .stoplight-num, .sl-pass .stoplight-label {{ color: white; }}
+        .sl-warning {{ background-color: #c8960c; }}
+        .sl-warning .stoplight-num, .sl-warning .stoplight-label {{ color: white; }}
+        .sl-fail    {{ background-color: #bd3c35; }}
+        .sl-fail .stoplight-num, .sl-fail .stoplight-label {{ color: white; }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>AquaTroll Depth Data Pipeline: Test Report</h1>
-        <p>Generated: {timestamp} on {computer_name} by {username}</p>
-    </div>
     <img src="{banner_path}" alt="Gorge Monitoring Banner" class="banner"
          onerror="this.style.display='none'">
 """
@@ -1473,9 +1492,8 @@ class TestEnvironmentalPipeline(unittest.TestCase):
             overall_status = "PASS"
 
         details = (
-            f"Checked {len(enabled_sites)} enabled sites: "
-            f"{pass_count} current, "
-            f"{warning_count} stale (>7 days), "
+            f"Checked {len(enabled_sites)} active sites: "
+            f"{warning_count} sporadically uploading data (>7 days), "
             f"{fail_count} failures (missing or no data in 28 days)"
         )
 
@@ -1707,21 +1725,32 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         # Start HTML
         html = HTML_HEADER.format(
             timestamp=timestamp,
-            computer_name=COMPUTER_NAME,
-            username=USERNAME,
             banner_path=banner_path
         )
-        # Summary section
+        # Summary section — title block + stoplight
+        run_month    = cls.test_start_time.strftime('%B %Y')
+        skipped_text = f"{skipped} skipped" if skipped > 0 else "none skipped"
         html += f"""
         <div class="summary">
-            <h2>Test Summary</h2>
-            <table>
-                <tr><th>Total Tests</th><td>{total_tests}</td></tr>
-                <tr><th>Passed</th><td class="pass">{passed}</td></tr>
-                <tr><th>Failed</th><td class="fail">{failed}</td></tr>
-                <tr><th>Warnings</th><td class="warning">{warnings}</td></tr>
-                <tr><th>Skipped</th><td class="skip">{skipped}</td></tr>
-            </table>
+            <div class="summary-title-block">
+                <h1>AquaTroll Depth Data Pipeline: Test Report</h1>
+                <p>Generated: {timestamp} on {COMPUTER_NAME} by {USERNAME}</p>
+            </div>
+            <p class="stoplight-intro">For {run_month} validation, {total_tests} checks were run, {skipped_text}.</p>
+            <div class="stoplight">
+                <div class="stoplight-cell sl-pass">
+                    <span class="stoplight-num">{passed}</span>
+                    <span class="stoplight-label">Passed</span>
+                </div>
+                <div class="stoplight-cell sl-warning">
+                    <span class="stoplight-num">{warnings}</span>
+                    <span class="stoplight-label">Warning</span>
+                </div>
+                <div class="stoplight-cell sl-fail">
+                    <span class="stoplight-num">{failed}</span>
+                    <span class="stoplight-label">Failed</span>
+                </div>
+            </div>
         </div>
         """
         # Group by category
@@ -1766,7 +1795,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                 section_tests.extend(categories.get(cat, []))
             if not section_tests:
                 continue
-            html += f'<h2>{section["heading"]}</h2>'
+            html += f'<div style="text-align:center; font-size:13px; font-weight:600; color:#1c1917; padding:8px 16px; margin-bottom:8px;">{section["heading"]}</div>'
             # Emit tests in the defined order; any unlisted tests append at end
             ordered = []
             remaining = list(section_tests)
@@ -1891,7 +1920,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     and r.get('voltage_history')
                 ]
                 if sites_needing_graph:
-                    html += '<h4>Voltage Trend (28-day) — Sites Requiring Attention:</h4>'
+                    html += '<h4 style="page-break-before:always;">Voltage Trend (28-day) &mdash; Sites Requiring Attention:</h4>'
                     for res in sites_needing_graph:
                         history = res['voltage_history']
                         site_id = res['site']
@@ -1905,7 +1934,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                         v_range = v_max - v_min if v_max != v_min else 0.1
 
                         W, H         = 640, 200
-                        PAD_L, PAD_R = 60, 20
+                        PAD_L, PAD_R = 60, 50
                         PAD_T, PAD_B = 20, 40
                         plot_w       = W - PAD_L - PAD_R
                         plot_h       = H - PAD_T - PAD_B
@@ -1950,19 +1979,22 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                             )
 
                         thresh_svg = ''
+                        label_x = W - PAD_R + 4  # inside right margin, left-anchored
                         if tw_val and isinstance(tw_val, (int, float)) and v_min <= tw_val <= v_max:
                             ty = threshold_y(tw_val)
                             thresh_svg += (
                                 f'<line x1="{PAD_L}" y1="{ty:.1f}" x2="{W-PAD_R}" y2="{ty:.1f}" '
-                                f'stroke="#ffc107" stroke-width="1.5" stroke-dasharray="5,3"/>'
-                                f'<text x="{W-PAD_R+2}" y="{ty+4:.1f}" font-size="9" fill="#ffc107">warn</text>'
+                                f'stroke="#c8960c" stroke-width="1.5" stroke-dasharray="5,3"/>'
+                                f'<text x="{label_x}" y="{ty+4:.1f}" text-anchor="start" '
+                                f'font-size="9" fill="#c8960c">warn</text>'
                             )
                         if tf_val and isinstance(tf_val, (int, float)) and v_min <= tf_val <= v_max:
                             ty = threshold_y(tf_val)
                             thresh_svg += (
                                 f'<line x1="{PAD_L}" y1="{ty:.1f}" x2="{W-PAD_R}" y2="{ty:.1f}" '
-                                f'stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,3"/>'
-                                f'<text x="{W-PAD_R+2}" y="{ty+4:.1f}" font-size="9" fill="#dc3545">fail</text>'
+                                f'stroke="#bd3c35" stroke-width="1.5" stroke-dasharray="5,3"/>'
+                                f'<text x="{label_x}" y="{ty+4:.1f}" text-anchor="start" '
+                                f'font-size="9" fill="#bd3c35">fail</text>'
                             )
 
                         last_x     = px_x(n - 1)
@@ -1983,7 +2015,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                                 {x_labels}
                                 {thresh_svg}
                                 <polyline points="{points}" fill="none"
-                                          stroke="#667eea" stroke-width="2" stroke-linejoin="round"/>
+                                          stroke="#bd3c35" stroke-width="2" stroke-linejoin="round"/>
                                 <circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="4"
                                         fill="{dot_colour}" stroke="white" stroke-width="1.5"/>
                                 <text x="{last_x:.1f}" y="{last_y-8:.1f}" text-anchor="middle"
