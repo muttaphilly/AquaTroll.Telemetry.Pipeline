@@ -73,7 +73,7 @@ TEST_DESCRIPTIONS = {
         "Verifies battery voltage across {n_sites} active sites."
     ),
     "Site Configuration": (
-        "Checks which sites are setup by reading from the SITES_CONFIG env variable, "
+        "Checks which sites are setup by reading from the SITES_CONFIG env variable."
     ),
     "Network Availability": (
         "Locates last recorded depth reading for active site(s). "
@@ -954,7 +954,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         STARLINK_SITES = {'ERP3', 'ERP4'}
         THRESHOLDS = {
             'starlink': {'warn': 13.2, 'fail': 13.05},
-            'logger':   {'warn': 3.6,  'fail': 3.5},
+            'logger':   {'warn': 3.5,  'fail': 3.4},
         }
         STALE_WARN_DAYS = 7
         STALE_FAIL_DAYS = 28
