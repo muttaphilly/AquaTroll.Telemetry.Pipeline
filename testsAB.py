@@ -102,9 +102,9 @@ HTML_HEADER = """
         @page {{ margin: 10mm 12mm; }}
         body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 0;
                 background-color: #cfd6d1; color: #1c1917; }}
-        .banner {{ width: 100%; height: 160px; object-fit: cover; border-radius: 6px;
-                   margin-bottom: 12px; background-color: #b5bfba; display: block; }}
-        .summary {{ background: white; padding: 0 0 16px 0; border-radius: 6px;
+        .banner {{ width: 100%; height: 220px; object-fit: cover; border-radius: 6px 6px 0 0;
+                   margin-bottom: 0; background-color: #b5bfba; display: block; }}
+        .summary {{ background: white; padding: 0 0 16px 0; border-radius: 0 0 6px 6px;
                     margin-bottom: 12px; overflow: hidden; }}
         .summary-title-block {{ background-color: #d5cbae; padding: 12px 16px 10px 16px;
                                 margin-bottom: 12px; }}
@@ -163,6 +163,22 @@ HTML_HEADER = """
         .sl-warning .stoplight-num, .sl-warning .stoplight-label {{ color: white; }}
         .sl-fail    {{ background-color: #bd3c35; }}
         .sl-fail .stoplight-num, .sl-fail .stoplight-label {{ color: white; }}
+        @media print {{
+            body {{ font-size: 8px; }}
+            p, ul, li {{ font-size: 8px; }}
+            table, th, td {{ font-size: 7.5px; }}
+            .test-section h3 {{ font-size: 9px; }}
+            .section-heading h2 {{ font-size: 10px; }}
+            .summary-title-block h1 {{ font-size: 11px; }}
+            .summary-title-block p {{ font-size: 7px; }}
+            h4 {{ font-size: 8px; }}
+            .test-description {{ font-size: 7.5px; }}
+            .column-list {{ font-size: 7.5px; }}
+            .stoplight-intro {{ font-size: 8px; }}
+            .stoplight-num {{ font-size: 24px; }}
+            .footer {{ font-size: 7.5px; }}
+            pre {{ font-size: 7px; }}
+        }}
     </style>
 </head>
 <body>
@@ -1966,7 +1982,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                                 f'<line x1="{PAD_L-4}" y1="{ty:.1f}" '
                                 f'x2="{PAD_L}" y2="{ty:.1f}" stroke="#999" stroke-width="1"/>'
                                 f'<text x="{PAD_L-6}" y="{ty+4:.1f}" text-anchor="end" '
-                                f'font-size="10" fill="#555">{tick_v:.2f}</text>'
+                                f'font-size="7" fill="#555">{tick_v:.2f}</text>'
                             )
 
                         x_labels = ''
@@ -1975,7 +1991,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                             lx = px_x(i)
                             x_labels += (
                                 f'<text x="{lx:.1f}" y="{H - PAD_B + 14}" '
-                                f'text-anchor="middle" font-size="9" fill="#555">{labels[i]}</text>'
+                                f'text-anchor="middle" font-size="7" fill="#555">{labels[i]}</text>'
                             )
 
                         thresh_svg = ''
