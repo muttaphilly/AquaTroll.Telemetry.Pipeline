@@ -149,8 +149,6 @@ def send_validated_data_email(csv_path, html_report_path=None):
         f"{chr(10).join(attachments_list)}\n\n"
         f"This email is not monitored.\n"
         f"{contact_line}\n\n"
-        "Built on open source software. Code & documentation available at:\n"
-        "https://github.com/muttaphilly/AquaTroll.Telemetry.Pipeline"
     )
   
     return send_email_with_attachments(recipients, subject, body, attachments)

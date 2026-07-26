@@ -47,8 +47,8 @@ USERNAME = getuser()
 # ============================================================================
 TEST_DESCRIPTIONS = {
     "Weather Website Access": (
-        "Verifies if weather website accessible "
-        "and returns the received HTTP response code."
+        "Verifies if weather website accessible. "
+        "Prints the received HTTP response code and time to execute."
     ),
     "Logger Portal Access": (
         "Checks connectivity & provided authentication credentials allow for a "
@@ -62,15 +62,15 @@ TEST_DESCRIPTIONS = {
     ),
     "Weather Data Structure": (
         "Verifies weather website accessibility and confirms the presence of data "
-        "at the expected positions in array (9 am at position 15, 3 pm at position 21) and rainfall "
+        "at the expected positions of the returned array (9 am at position 15, 3 pm at position 21) and rainfall "
         "data at position 4."
     ),
     "Logger Data Structure": (
-        "Checks that downloaded data contains all required columns for"
-        "for analysis (Date, Time, Level and Battery.)"
+        "Confirms downloaded data has the required columns for"
+        "analysis (Date, Time, Level and Battery.)"
     ),
     "Network Power": (
-        "Verifies battery voltage across {n_sites} active sites."
+        "Verifies battery voltage across all {n_sites} active sites."
     ),
     "Site Configuration": (
         "Checks which sites are setup by reading from the SITES_CONFIG env variable."
@@ -87,7 +87,7 @@ TEST_DESCRIPTIONS = {
     ),
     "Monthly Statistical Anomalies": (
         "Picks up data for review with any 1 day depth changes >15%,  "
-        "pressure changes >2% plus any other statistically dubious values"
+        "pressure changes >2% plus any other statistically dubious depth values"
     )
 }
 # ============================================================================
@@ -905,7 +905,7 @@ class TestEnvironmentalPipeline(unittest.TestCase):
                     "Logger Data Structure",
                     "Data Pipeline Tests",
                     overall_status,
-                    f"Logger data has required columns: Date, Time, {level_col}{batt_note}"
+                    f"Logger data has the required columns: Date, Time, {level_col}{batt_note}"
                 )
             else:
                 missing = []
@@ -1745,14 +1745,14 @@ class TestEnvironmentalPipeline(unittest.TestCase):
         )
         # Summary section — title block + stoplight
         run_month    = cls.test_start_time.strftime('%B %Y')
-        skipped_text = f"{skipped} skipped" if skipped > 0 else "none skipped"
+        skipped_text = f"{skipped} skipped" if skipped > 0 else "none were skipped"
         html += f"""
         <div class="summary">
             <div class="summary-title-block">
                 <h1>AquaTroll Depth Data Pipeline: Test Report</h1>
                 <p>Generated: {timestamp} on {COMPUTER_NAME} by {USERNAME}</p>
             </div>
-            <p class="stoplight-intro">For {run_month} validation, {total_tests} checks were run, {skipped_text}.</p>
+            <p class="stoplight-intro">In this {run_month} validation, {total_tests} checks were run, {skipped_text}.</p>
             <div class="stoplight">
                 <div class="stoplight-cell sl-pass">
                     <span class="stoplight-num">{passed}</span>
