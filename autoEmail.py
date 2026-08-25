@@ -123,7 +123,7 @@ def send_validated_data_email(csv_path, html_report_path=None):
     
     subject = os.getenv('VALIDATION_EMAIL_SUBJECT', "Logger Validation Report")
     
-    # Build attachment list — prefer PDF if WeasyPrint produced one
+    # Build attachment list
     attachments = [csv_path]
     attachments_list = [f"* {os.path.basename(csv_path)}"]
 
